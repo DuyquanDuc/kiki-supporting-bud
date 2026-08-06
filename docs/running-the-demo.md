@@ -266,6 +266,41 @@ line, interleaved with the `heard [...]` lines, so that window is a running
 record of the meeting and what was answered. Speech is gone the moment it plays;
 keep the console somewhere you can glance at.
 
+### Keeping it out of your screen share
+
+The design is a private assist — voice in your ear, no bot in the call, nothing
+rendered for anyone else. That collapses the moment you share your screen with
+the console sitting there full of answers.
+
+On by default (`HIDE_FROM_CAPTURE=1`). Windows' `SetWindowDisplayAffinity` with
+`WDA_EXCLUDEFROMCAPTURE` makes a window completely normal on your monitor and
+*absent* from anything capturing the screen — not blacked out, simply not
+present. Verify it rather than trusting it:
+
+```powershell
+.\.venv\Scripts\python.exe -m demo.check_setup --hide
+```
+
+It puts a marker window on screen, screenshots that region and counts its
+pixels: `64800 pixels -> 0` means genuinely invisible.
+
+**The console is the weak point.** Windows Terminal draws in its own window,
+which this process does not own, so the console cannot be hidden from inside —
+and the console is where answers print. Classic `conhost` can be hidden. The
+check reports which you have, and the app warns at startup:
+
+```
+screen-share: running under Windows Terminal ...
+screen-share: WARNING — answers print here and WILL be shared
+```
+
+Either run under conhost, or keep that window off the screen you share (another
+monitor, or share a single application window rather than the whole desktop).
+
+**It hides windows, nothing else.** Spoken answers still reach the call if
+`TTS_DEVICE` points at your speakers, and it cannot help against a phone camera
+pointed at your screen.
+
 ### Answers you have to read, not hear
 
 Code cannot be listened to. When an answer carries something you must look at —

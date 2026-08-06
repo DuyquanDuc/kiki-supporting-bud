@@ -434,7 +434,84 @@ def say() -> None:
         line(WARN, "   set TTS_DEVICE in .env to a fragment of the right name.")
 
 
+def hide() -> None:
+    """Prove whether this tool's windows are actually hidden from screen shares.
+
+    Measured, not assumed: it puts a marker window on screen, screenshots the
+    region, and counts how many of its pixels the capture picked up.
+    """
+    import numpy as np
+    import tkinter as tk
+
+    from . import privacy
+
+    if not config.HIDE_FROM_CAPTURE:
+        line(WARN, "HIDE_FROM_CAPTURE=0 — windows are visible in screen shares")
+
+    hwnd = privacy.console_window()
+    if not hwnd:
+        line(WARN, "no console window attached — nothing to hide")
+    elif privacy.console_is_classic(hwnd):
+        ok = privacy.exclude_window(hwnd)
+        line(OK if ok else BAD,
+             "console hidden from capture" if ok else "the OS refused to hide the console")
+    else:
+        line(BAD, "console cannot be hidden: this is Windows Terminal")
+        line(WARN, "   Terminal draws in its own window, which this process does")
+        line(WARN, "   not own. Answers printed here WILL appear in a screen")
+        line(WARN, "   share. Use a classic console (conhost) — e.g. run via")
+        line(WARN, "   `conhost.exe .\\.venv\\Scripts\\python.exe -m demo.main` —")
+        line(WARN, "   or keep this window off the screen you share.")
+
+    # Now measure the overlay-style window, which is what the API is really for.
+    root = tk.Tk()
+    root.overrideredirect(True)
+    root.attributes("-topmost", True)
+    root.geometry("360x180+140+140")
+    root.configure(bg="#ff00ff")
+    root.update()
+    import ctypes
+
+    win = root.winfo_id()
+    target = ctypes.windll.user32.GetParent(win) or win
+
+    def marker_pixels() -> int:
+        import mss
+
+        capture = getattr(mss, "MSS", None) or mss.mss
+        with capture() as sct:
+            shot = sct.grab({"left": 140, "top": 140, "width": 360, "height": 180})
+        a = np.asarray(shot)[:, :, :3][:, :, ::-1]
+        return int(((a[:, :, 0] > 200) & (a[:, :, 1] < 60) & (a[:, :, 2] > 200)).sum())
+
+    root.update()
+    time.sleep(0.3)
+    before = marker_pixels()
+    privacy.exclude_window(target)
+    root.update()
+    time.sleep(0.3)
+    after = marker_pixels()
+    root.destroy()
+
+    if before > 1000 and after == 0:
+        line(OK, f"overlay-style windows are invisible to capture "
+                 f"({before} pixels -> {after})")
+    elif before <= 1000:
+        line(WARN, "could not measure — the test window was obscured")
+    else:
+        line(BAD, f"NOT hidden: capture still sees it ({before} -> {after})")
+        line(WARN, "   needs Windows 10 version 2004 (build 19041) or newer")
+
+    print()
+    line(WARN, "This hides WINDOWS only. It does nothing about audio: if")
+    line(WARN, "TTS_DEVICE points at your speakers, spoken answers still reach")
+    line(WARN, "the call through your microphone. Pin it to your earphones.")
+
+
 def main() -> None:
+    if "--hide" in sys.argv:
+        hide()
+        return
     if "--say" in sys.argv:
         say()
         return

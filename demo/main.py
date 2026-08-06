@@ -298,6 +298,14 @@ def main() -> None:
 
     client = build_client(args.offline)
 
+    if config.HIDE_FROM_CAPTURE:
+        from . import privacy
+
+        hidden, why = privacy.hide_console()
+        log(f"screen-share: {why}")
+        if not hidden:
+            log("screen-share: WARNING — answers print here and WILL be shared")
+
     region = None
     if not args.offline:
         region = region_mod.select() if args.pick_region else region_mod.load_or_select()

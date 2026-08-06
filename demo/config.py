@@ -127,6 +127,12 @@ HOTKEY_QUIT = os.getenv("HOTKEY_QUIT", "<f12>").strip()
 # on when you want the detail to stay readable after the sentence has played.
 # Faults are spoken either way, so nothing is lost by leaving this off.
 OVERLAY_ENABLED = os.getenv("OVERLAY_ENABLED", "0").strip() == "1"
+# Keep this tool's own windows out of screen shares — the overlay, and the
+# console the answers print into. On by default: the entire point is a private
+# assist, and that collapses the moment you share your screen with the answers
+# sitting on it. Protects windows only; it does nothing about audio leaking
+# through your microphone. See demo/privacy.py.
+HIDE_FROM_CAPTURE = os.getenv("HIDE_FROM_CAPTURE", "1").strip() == "1"
 OVERLAY_SECONDS = 9
 OVERLAY_WIDTH = 460
 OVERLAY_MARGIN = 28

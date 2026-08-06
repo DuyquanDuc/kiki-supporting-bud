@@ -66,6 +66,16 @@ class Overlay:
 
         self._win.update_idletasks()
         self._make_click_through()
+        if config.HIDE_FROM_CAPTURE:
+            self._hide_from_capture()
+
+    def _hide_from_capture(self) -> None:
+        """Keep the card out of screen shares. Silent if the OS refuses."""
+        from . import privacy
+
+        hwnd = self._win.winfo_id()
+        parent = ctypes.windll.user32.GetParent(hwnd)
+        privacy.exclude_window(parent or hwnd)
 
     def _make_click_through(self) -> None:
         """Windows-only: let clicks pass to the meeting window underneath."""
