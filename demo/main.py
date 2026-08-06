@@ -40,6 +40,38 @@ def log(message: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
 
 
+READ_MARKER = "---"
+
+
+def split_answer(body: str) -> tuple[str, str]:
+    """(to speak, to print). A line of --- separates them.
+
+    Code cannot be listened to. When the answer carries something you have to
+    look at, the sentence above the marker is spoken and the block below is only
+    printed — so the speech stays short while the console holds the real thing.
+    """
+    lines = body.splitlines()
+    for index, line in enumerate(lines):
+        if line.strip() == READ_MARKER:
+            spoken = "\n".join(lines[:index]).strip()
+            return (spoken or body), body
+    return body, body
+
+
+def log_answer(body: str) -> None:
+    """Print the answer under the timing line.
+
+    Speech is gone the moment it plays, which is fine for a number and useless
+    for anything you need to look at — code, an exact name, a command. The
+    console keeps it, interleaved with the `heard [...]` lines, so the window is
+    a running record of the meeting and what was answered.
+    """
+    for line in body.splitlines():
+        if line.strip().startswith("```"):
+            continue  # markdown fences are clutter in a console
+        print(f"           | {line}", flush=True)
+
+
 # --- answer building -------------------------------------------------------
 
 
@@ -201,15 +233,18 @@ class Trigger:
         meta = f"{elapsed_ms}ms · {source} · screen {state.age_seconds:.0f}s old"
         _events.put(("answer", title, body, meta, "sales table" in source))
         log(f"button -> {elapsed_ms}ms ({source})")
+        log_answer(body)
         self._speak(spoken)
 
     # --- shared -------------------------------------------------------------
 
     def _deliver(self, title: str, body: str, started: float, note: str, label: str) -> None:
+        spoken, printed = split_answer(body)
         elapsed_ms = int((time.perf_counter() - started) * 1000)
-        _events.put(("answer", title, body, f"{elapsed_ms}ms · {note}", True))
+        _events.put(("answer", title, printed, f"{elapsed_ms}ms · {note}", True))
         log(f"button -> {elapsed_ms}ms ({label})")
-        self._speak(body)
+        log_answer(printed)
+        self._speak(spoken)
 
     def _emit(self, title: str, body: str, meta: str, accent: bool, spoken: str = "") -> None:
         """Show a card if the overlay is on, and always say something.

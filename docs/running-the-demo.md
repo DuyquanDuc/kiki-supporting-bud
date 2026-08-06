@@ -239,6 +239,29 @@ spoken, including faults ("Not hearing anything. Press F10 to read the screen"),
 so a press never does nothing. Set `OVERLAY_ENABLED=1` in `.env` if you want the
 card back to keep the detail readable after the sentence has played.
 
+**The console is the transcript.** Every answer is printed under its timing
+line, interleaved with the `heard [...]` lines, so that window is a running
+record of the meeting and what was answered. Speech is gone the moment it plays;
+keep the console somewhere you can glance at.
+
+### Answers you have to read, not hear
+
+Code cannot be listened to. When an answer carries something you must look at —
+code, a command, an exact identifier — it comes back in two parts split by a
+`---` line. Only the part above is spoken; the whole thing is printed:
+
+```
+[08:32:56] button -> 2100ms (live transcript)
+           | Use a HashMap and merge counts as you go.
+           | ---
+           | Map<String, Integer> counts = new HashMap<>();
+           | counts.merge(word, 1, Integer::sum);
+```
+
+So the speech stays short while the console holds the real thing. Ordinary
+answers get no split — a number, a name or a yes/no is just spoken and printed
+as one line.
+
 The console tells you which fired: `button -> 0ms (overheard)`,
 `(live transcript)`, `(full)`, or `(screen)`.
 

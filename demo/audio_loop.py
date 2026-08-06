@@ -78,6 +78,24 @@ _QUESTION_RE = re.compile(
     re.IGNORECASE,
 )
 
+_READ_RULE = """SOMETHING TO LOOK AT. A few answers cannot be heard, only read:
+code, a command, an exact identifier or path, a precise string. For those, and
+only those, write the spoken sentence first, then a line containing only ---,
+then the thing to read:
+
+    Use a HashMap and merge counts as you go.
+    ---
+    Map<String, Integer> counts = new HashMap<>();
+    counts.merge(word, 1, Integer::sum);
+
+Everything above --- is spoken and must still obey the length rule on its own.
+Everything below is printed for them to read, is not spoken, and is exempt from
+the length rule — but keep it to the smallest complete thing that answers the
+question, not a tutorial.
+
+Use this only when seeing it genuinely matters. An ordinary answer gets no ---
+block; a number, a name, or a yes/no never needs one."""
+
 _LENGTH_RULE = """LENGTH IS THE FAILURE MODE. One sentence, 15-25 words. Two
 only if the question genuinely has two halves. This is spoken into someone's ear
 while the meeting keeps going, so every extra word costs them the next thing said
@@ -236,6 +254,8 @@ commitment on the user's behalf.
 
 {_LENGTH_RULE}
 
+{_READ_RULE}
+
 {_TONE_RULE}"""
 
 # F10. Same job, but with the actual pixels — so it can read a figure the screen
@@ -254,6 +274,8 @@ Read the screenshot carefully — specific figures, labels, names, error text. N
 invent anything that is not in the image or the transcript.
 
 {_LENGTH_RULE}
+
+{_READ_RULE}
 
 {_TONE_RULE}"""
 
