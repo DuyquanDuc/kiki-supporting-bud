@@ -284,6 +284,8 @@ whatever is still speaking.
 
 | Symptom | Cause |
 |---|---|
+| Buttons do nothing, or F9 opens a screenshot | Laptop F-row is in multimedia mode, so F9 sends `print_screen`, F10 sends `end`. **Hold Fn**, or enable Function Lock (often Fn+Esc). `check_setup --keys` confirms it |
+| Pressed a button, heard nothing | `check_setup --say` — a `TTS_DEVICE` pointing at unplugged headphones plays to nowhere |
 | `model 'x' NOT available` in check_setup | Model id in `.env` doesn't exist for your key — the check prints near matches |
 | Answer is always "Warming up" | Screen loop hasn't completed a call yet, or it errored — check the console |
 | Nothing in console for minutes | Frame diff sees a static screen. That's correct. Lower `DIFF_THRESHOLD` to be twitchier |
