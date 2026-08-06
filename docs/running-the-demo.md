@@ -255,11 +255,24 @@ Priority when the two disagree:
 2. Nothing said, screen poses a problem → solve it
 3. Screen poses nothing → say what it shows and the point it makes
 
-**Voice only by default.** No card appears when you press — the answer is spoken
-to your pinned output device and nothing renders on screen. Every outcome is
-spoken, including faults ("Not hearing anything. Press F10 to read the screen"),
-so a press never does nothing. Set `OVERLAY_ENABLED=1` in `.env` if you want the
-card back to keep the detail readable after the sentence has played.
+**Voice first, card only when there is something to read.** Ordinary answers are
+spoken and nothing appears on screen. When the answer carries code, a command or
+an exact string, a private card shows it — monospaced, never wrapped, and sized
+to the block. `OVERLAY_MODE` in `.env`:
+
+| Value | Card appears |
+|---|---|
+| `read` *(default)* | only when there is something to look at |
+| `always` | every answer |
+| `off` | never |
+
+**Read code from the card, not the terminal.** The card is excluded from screen
+capture (measured: `780x272` window, **0 pixels** visible to a screenshot). VS
+Code's terminal and Windows Terminal own their own windows, so neither can be
+hidden — anything you read there is in the screen share.
+
+The card stays up longer for code than for a sentence, scaled by line count
+(20s + 2.5s per line, capped at two minutes) so it is not pulled away mid-read.
 
 **The console is the transcript.** Every answer is printed under its timing
 line, interleaved with the `heard [...]` lines, so that window is a running

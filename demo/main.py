@@ -40,9 +40,6 @@ def log(message: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
 
 
-READ_MARKER = "---"
-
-
 def split_answer(body: str) -> tuple[str, str]:
     """(to speak, to print). A line of --- separates them.
 
@@ -52,7 +49,7 @@ def split_answer(body: str) -> tuple[str, str]:
     """
     lines = body.splitlines()
     for index, line in enumerate(lines):
-        if line.strip() == READ_MARKER:
+        if line.strip() == config.READ_MARKER:
             spoken = "\n".join(lines[:index]).strip()
             return (spoken or body), body
     return body, body
@@ -381,7 +378,7 @@ def main() -> None:
 
     root = tk.Tk()
     root.withdraw()
-    overlay = Overlay(root, enabled=config.OVERLAY_ENABLED)
+    overlay = Overlay(root, mode=config.OVERLAY_MODE)
 
     def pump() -> None:
         try:

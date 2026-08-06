@@ -122,11 +122,24 @@ HOTKEY_REGION = os.getenv("HOTKEY_REGION", "<f8>").strip()
 HOTKEY_QUIT = os.getenv("HOTKEY_QUIT", "<f12>").strip()
 
 # --- Overlay ---------------------------------------------------------------
-# Off by default: the point of this rig is a voice in your ear, and a card that
-# appears on every press is one mis-shared screen away from being seen. Turn it
-# on when you want the detail to stay readable after the sentence has played.
-# Faults are spoken either way, so nothing is lost by leaving this off.
-OVERLAY_ENABLED = os.getenv("OVERLAY_ENABLED", "0").strip() == "1"
+# A line of --- in an answer separates the sentence to hear from the block to
+# read, because code cannot be listened to.
+READ_MARKER = "---"
+
+# When the private card appears:
+#   read   — only when the answer carries something you must look at: code, a
+#            command, an exact string. Everything else stays voice-only.
+#   always — every answer.
+#   off    — never.
+#
+# "read" by default. A card on every press is noise, but a code answer that only
+# exists as speech is useless — and reading it out of a terminal is worse, since
+# VS Code and Windows Terminal own their windows and cannot be kept out of a
+# screen share. This window can (see demo/privacy.py).
+OVERLAY_MODE = os.getenv("OVERLAY_MODE", "read").strip().lower()
+# Superseded by OVERLAY_MODE, still honoured so an existing .env keeps working.
+if os.getenv("OVERLAY_ENABLED", "").strip() == "0" and not os.getenv("OVERLAY_MODE"):
+    OVERLAY_MODE = "off"
 # Keep this tool's own windows out of screen shares — the overlay, and the
 # console the answers print into. On by default: the entire point is a private
 # assist, and that collapses the moment you share your screen with the answers
@@ -134,7 +147,14 @@ OVERLAY_ENABLED = os.getenv("OVERLAY_ENABLED", "0").strip() == "1"
 # through your microphone. See demo/privacy.py.
 HIDE_FROM_CAPTURE = os.getenv("HIDE_FROM_CAPTURE", "1").strip() == "1"
 OVERLAY_SECONDS = 9
+# Code needs longer on screen than a sentence does. Grows with the line count
+# so a long block is not yanked away mid-read.
+OVERLAY_READ_BASE_SECONDS = 20
+OVERLAY_READ_PER_LINE = 2.5
+OVERLAY_READ_MAX_SECONDS = 120
 OVERLAY_WIDTH = 460
+# Wider when there is code in it — wrapped code is unreadable.
+OVERLAY_CODE_WIDTH = 780
 OVERLAY_MARGIN = 28
 
 # --- Speech ----------------------------------------------------------------
