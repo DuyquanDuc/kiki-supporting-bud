@@ -202,6 +202,27 @@ included rather than waiting for the chunk cadence to catch up.
 Press right after the question ends, not while it is still being asked — words
 that have not been spoken cannot be transcribed.
 
+### Buy time on purpose: ask them to repeat it
+
+*"Sorry, could you say that again?"* is a normal thing to say in a meeting, and
+it is the best move available here. The seconds it buys are exactly what the
+pre-answer needs, so by the time they finish repeating, the answer is parked.
+
+Press when they finish and you get it at **0ms** — the console shows
+`button -> 0ms (repeat)`.
+
+This works because a repeat would otherwise ruin it. Fresh speech normally
+discards the parked answer as stale, so without special handling the repeat
+would trigger a full recompute and the tactic would *cost* time. The press-time
+transcription is compared against the question already answered, and a close
+match serves the parked answer instead.
+
+Matching is on character trigrams rather than words, so it survives rephrasing
+and works in Japanese, which has no spaces to split on. Measured on real
+rewordings across all three languages: repeats score 0.67–0.89, unrelated
+questions 0.00–0.10, against a 0.45 threshold — a wide gap, so it does not fire
+when they move on to something new.
+
 ### F10 — said + shown
 
 Sends the actual screenshot alongside the transcript, so it reads figures,

@@ -473,6 +473,25 @@ def probe_loopback(device: int, seconds: float = 1.2) -> tuple[float, float]:
     return listen(play=False), listen(play=True)
 
 
+def _overlap(a: str, b: str) -> float:
+    """How much of the shorter string's character trigrams appear in the other.
+
+    Character trigrams rather than words because the transcript is Vietnamese,
+    Japanese and English: Japanese has no spaces to split on, and a repeated
+    question is never word-identical anyway ("what is ETL" vs "so can you explain
+    what ETL is"). Containment, not Jaccard, so a longer restatement of a short
+    question still scores high.
+    """
+    def grams(text: str) -> set[str]:
+        squashed = re.sub(r"[\s\.,!?？。、]+", "", text.lower())
+        return {squashed[i:i + 3] for i in range(max(0, len(squashed) - 2))}
+
+    first, second = grams(a), grams(b)
+    if not first or not second:
+        return 0.0
+    return len(first & second) / min(len(first), len(second))
+
+
 def _system_prompt(base: str) -> str:
     """Base prompt plus whatever the user has written about themselves."""
     profile = load_profile()
@@ -795,6 +814,22 @@ class AudioLoop:
             for label, text in lines:
                 self._on_event(f"just said [{label}]: {text[:70]}")
         return bool(lines)
+
+    def tail_echoes(self, question: str, threshold: float = 0.45) -> bool:
+        """Is the just-heard audio a repeat of a question already answered?
+
+        This exists for a deliberate tactic: ask them to say it again. The
+        seconds that buys are exactly what the pre-answer needs, so by the time
+        they finish repeating, the answer is parked and ready.
+
+        Without this the repeat counts as fresh speech, the parked answer is
+        discarded as stale, and the press pays for a full recompute — the tactic
+        would cost time rather than save it.
+        """
+        tail = self._tail_text()
+        if not tail or not question:
+            return False
+        return _overlap(tail, question) >= threshold
 
     def _tail_text(self) -> str:
         if not self._tail:

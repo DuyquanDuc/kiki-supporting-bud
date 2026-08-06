@@ -120,15 +120,18 @@ class Trigger:
         fresh = self._audio.flush_and_wait()
 
         # A question the loop already overheard and answered: nothing to do but
-        # read a variable. Skipped when the flush found newer speech, since the
-        # parked answer predates it and would be answering the wrong thing.
-        if not fresh:
-            pending = self._audio.take_pending()
-            if pending is not None:
-                self._deliver(
-                    "Answering the question", pending.answer, started,
-                    f"overheard · asked {pending.age_seconds:.0f}s ago", "overheard",
-                )
+        # read a variable. Normally skipped when the flush found newer speech,
+        # since the parked answer predates it — except when that newer speech is
+        # them repeating the same question, which is the whole point of asking
+        # them to say it again.
+        pending = self._audio.take_pending()
+        if pending is not None:
+            echoed = fresh and self._audio.tail_echoes(pending.question)
+            if not fresh or echoed:
+                note = "repeated · answer was ready" if echoed else \
+                       f"overheard · asked {pending.age_seconds:.0f}s ago"
+                self._deliver("Answering the question", pending.answer, started,
+                              note, "repeat" if echoed else "overheard")
                 return
 
         if not self._audio.has_transcript():
