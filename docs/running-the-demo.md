@@ -1,0 +1,277 @@
+# Running the demo
+
+Windows, Python 3.11. Tested on 3.11.1.
+
+## Setup
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+copy .env.example .env      # then paste the key into .env
+```
+
+Check everything before you need it to work:
+
+```powershell
+.\.venv\Scripts\python.exe -m demo.check_setup
+```
+
+It verifies imports, whether your key can actually see the configured model ids,
+which output device speech will land on, whether the input device can actually
+hear anything, and whether a capture region is saved.
+
+## Telling it about you
+
+`demo/data/profile.md` is free text handed to the bot before every answer. Fill
+in what you want, delete the rest — it is re-read on each press, so edits apply
+mid-meeting with no restart. An untouched file costs nothing: HTML comments and
+empty `- Label:` lines are stripped, and headings with nothing under them are
+dropped.
+
+The highest-value section is **Terms and names**. Project names, acronyms, and
+who owns what are exactly what the bot cannot infer and most often gets wrong —
+it stops "Kirin" being transcribed as an ordinary word, and turns "unclear from
+the transcript" into "Trang owns that".
+
+Second is **What meetings I use this in**. The bot answers a mock interview very
+differently from a sprint review.
+
+Notes are context, not commands: if a note conflicts with what was actually said
+in the meeting, what was said wins.
+
+## Working in more than one language
+
+Answers come back in the language the question was asked in — Vietnamese,
+Japanese or English — decided per question, so a mixed meeting works without
+switching anything.
+
+Technical terms stay in whatever form they were spoken. Vietnamese and Japanese
+engineers say "deploy", "commit", "stack", "heap" in English mid-sentence, and
+translating those would make you stop and decode a word you already knew:
+
+> *Stack giữ biến local và lời gọi hàm. Heap chứa object, và heap mới bị garbage collect.*
+
+Because you only listen and never repeat these, politeness forms are dropped as
+wasted breath: no Vietnamese pronouns or `dạ`/`ạ` (they carry status the bot has
+no business guessing), and Japanese stays compact rather than reaching for 敬語.
+
+## Making it hear the meeting
+
+The bot listens on **two** sources and merges them into one speaker-tagged
+transcript:
+
+| Tag | Source | Hears |
+|---|---|---|
+| `Them` | loopback (Stereo Mix) | everyone else in the call |
+| `You` | your microphone | you |
+
+They are checked separately by `check_setup` and fail independently — a dead
+loopback still leaves you with a working mic, and vice versa. Set `MIC_ENABLED=0`
+to drop the mic half.
+
+On **speakers** rather than headphones, your mic also picks up the remote
+voices, so remote speech can appear twice — once as `Them`, once as `You`.
+Headphones remove it.
+
+This is the step most likely to bite you, so do it before you need it.
+
+The bot listens on a **loopback** input — a device that captures the system
+output mix, i.e. the voices coming out of your speakers. On Realtek hardware
+that device is **Stereo Mix**, and Windows ships it disabled. Worse, PortAudio
+still *enumerates* it while disabled, so name-matching alone reports success and
+the bot then silently transcribes nothing forever.
+
+The same loopback appears once per host API, and they fail independently, so
+`check_setup` probes each in turn with a test tone and reports which one is
+actually usable:
+
+```
+[  ok  ] 4 device(s) match 'Stereo Mix', best API first:
+         [12] Windows WASAPI       ステレオ ミキサー (Realtek(R) Audio)
+         [13] Windows WDM-KS       Stereo Mix (Realtek HD Audio Stereo input)
+[  ok  ] [12] Windows WASAPI: hears audio (silent 0.000082 -> tone 0.049)
+```
+
+Three distinct failure modes, and they need different fixes:
+
+| What you see | Means |
+|---|---|
+| `no input device matches` | Name doesn't match. Windows localises it — a Japanese system has ステレオ ミキサー, not "Stereo Mix". Aliases are handled, but check `AUDIO_DEVICE` |
+| `opens but hears NOTHING` | Enumerated and disabled. Enable it (below) |
+| `will not open` | Enabled but claimed or locked. Close other audio apps, or unplug/replug the headset to force re-enumeration |
+
+To enable it: `Win+R` → `mmsys.cpl` → **Recording** tab → right-click empty
+space → **Show Disabled Devices** → right-click **Stereo Mix** → **Enable**.
+Re-run `check_setup`. If it stays dead, install
+[VB-Audio Cable](https://vb-audio.com/Cable/) and set `AUDIO_DEVICE=CABLE Output`.
+
+### The live meter
+
+When the device opens and streams but still transcribes nothing, the tone probe
+is not enough — you need to watch the level while *your* audio plays:
+
+```powershell
+.\.venv\Scripts\python.exe -m demo.check_setup --meter
+```
+
+```
+  0.000336 [###############......|..................] dropped as silence
+  0.041220 [###########################|............] TRANSCRIBED
+```
+
+The `|` is the silence floor. If the bar sits left of it while you can plainly
+hear the sound, the device is open but not tapping your output. Nearly always
+one of:
+
+1. **Stereo Mix's own level slider is down.** `mmsys.cpl` → Recording →
+   Stereo Mix → **Properties** → **Levels** → push to 100. This is the top
+   cause of "enabled, streaming, and silent" — the stream is real, the gain
+   is zero.
+2. **The audio is going somewhere else.** Settings → Sound → **Volume mixer**,
+   check the app is on the same output device Stereo Mix taps.
+3. **The endpoint changed** since it last worked — headphones plugged in,
+   default output switched.
+
+Do not "fix" this by lowering `AUDIO_SILENCE_RMS`. A signal that faint
+transcribes into garbage; the gain is the thing to fix.
+
+**Host API matters.** The bot prefers WASAPI and treats WDM-KS as a last resort:
+WDM-KS is exclusive-mode, so it locks the endpoint, and a process killed while
+holding it can leave the device unopenable until the driver resets. If Stereo Mix
+suddenly stops opening after a crash, that is usually why.
+
+Caveat worth knowing: Stereo Mix taps the **speaker** mix. If you route the call
+to earbuds only, it may capture nothing even when enabled. Test the combination
+you actually plan to use.
+
+## Run it
+
+```powershell
+.\.venv\Scripts\python.exe -m demo.main
+```
+
+First run asks you to drag a box around the shared-content area. That box is
+saved to `demo/data/region.json` and reused. `--pick-region` redraws it.
+
+| Key | Does |
+|---|---|
+| **F9** | What was **said** — transcript only, blind to the screen |
+| **F10** | What was said **and** what's shown — sends the real screenshot |
+| **F8** | Reminder to re-pick the region |
+| **F12** | Quit |
+
+### F9 — answer the last question
+
+Transcript only. It deliberately cannot see your screen, so it answers what was
+asked rather than describing a slide nobody mentioned.
+
+**It answers questions and nothing else** — it will not narrate or recap the
+discussion. If nobody has asked anything it says "No question asked" and stops.
+
+Pressing transcribes the last 14 seconds first, so a question you *just* heard is
+included rather than waiting for the chunk cadence to catch up.
+
+| Case | Latency |
+|---|---|
+| Someone just spoke — flush finds fresh speech | **~3.3s** — transcribe + answer |
+| Quiet since the question, already pre-answered | **0ms** — no call at all |
+| Nothing heard yet | instant "nothing transcribed yet" |
+
+Press right after the question ends, not while it is still being asked — words
+that have not been spoken cannot be transcribed.
+
+### F10 — said + shown
+
+Sends the actual screenshot alongside the transcript, so it reads figures,
+labels and error text that the screen loop's one-line summary never recorded —
+*"which account is in Discovery and how much"* needs the pixels, not a summary.
+Costs a vision round trip, **~2.5s**.
+
+With no transcript yet, F10 is simply "read my screen", which is why two buttons
+covers everything.
+
+**Voice only by default.** No card appears when you press — the answer is spoken
+to your pinned output device and nothing renders on screen. Every outcome is
+spoken, including faults ("Not hearing anything. Press F10 to read the screen"),
+so a press never does nothing. Set `OVERLAY_ENABLED=1` in `.env` if you want the
+card back to keep the detail readable after the sentence has played.
+
+The console tells you which fired: `button -> 0ms (overheard)`,
+`(live transcript)`, `(full)`, or `(screen)`.
+
+A USB footswitch that emulates a keypress maps straight onto either — change
+`HOTKEY_AUDIO` / `HOTKEY_FULL` in `demo/config.py` to whatever key yours sends.
+
+## Testing with a YouTube video
+
+1. Plug in your earphones **before** starting, so the device shows up.
+2. Run `check_setup`, find your earphones in the device list, and put a
+   distinctive fragment of the name in `.env` as `TTS_DEVICE=` — e.g.
+   `TTS_DEVICE=WF-1000`. This is what guarantees spoken answers reach only you.
+3. Start a video with numbers on screen — an earnings breakdown, a chart-heavy
+   explainer, anything with figures.
+4. Run the demo, drag the box around the video.
+5. Watch the console. Every few seconds you'll see either nothing (frame diff
+   suppressed it) or `screen updated in NNNms`.
+6. Press F9.
+
+To make the sales-table join fire, pause on a frame showing one of the amounts
+in `demo/data/sales.csv` — `2.4M`, `412,000`, `5.4M` and so on. Anything else
+falls back to describing the screen, which still works, just without the join.
+
+## Before the key arrives
+
+```powershell
+.\.venv\Scripts\python.exe -m demo.main --offline
+```
+
+Canned slide, no API calls, no region needed. The hotkey, overlay, latency
+readout and answer templating all run for real — enough to confirm the rig works
+on your machine. Once you have a key, `--offline` still speaks, so you can test
+earphone output without setting up a region.
+
+## What to expect on latency
+
+The button path itself measures **under a millisecond** — it is a dictionary
+lookup against state the screen loop already computed. The overlay card appears
+effectively instantly.
+
+Spoken output is a different number. It needs a round trip to the TTS endpoint
+before the first audio chunk arrives, realistically **0.3–1s**. Audio is streamed
+as raw PCM so playback starts on the first chunk rather than after a whole file
+downloads, but the round trip is unavoidable.
+
+So: the card is instant, the voice has a beat of lag. Pressing F9 again cuts off
+whatever is still speaking.
+
+## Known limits
+
+- **Single monitor.** The region picker reports coordinates relative to the
+  primary display, so a box dragged onto a second monitor captures the wrong area.
+- **F8 doesn't reselect in place.** It prints a reminder; restart with
+  `--pick-region`. Rebuilding a fullscreen picker while the overlay owns the
+  tkinter main loop is more surgery than the demo needs.
+- **No push-to-talk voice button.** Not needed as much now — the audio loop
+  already hears the question without you repeating it into a mic.
+- **Loopback capture is hardware-dependent.** Stereo Mix is disabled by default
+  on Windows and taps the speaker mix, so an earbuds-only routing may hear
+  nothing. `check_setup`'s tone probe is the way to confirm.
+- **Question detection is a regex.** English, Vietnamese and Japanese markers.
+  A phrasing it misses costs you ~2s (live fallback) rather than an error.
+
+## When it misbehaves
+
+| Symptom | Cause |
+|---|---|
+| `model 'x' NOT available` in check_setup | Model id in `.env` doesn't exist for your key — the check prints near matches |
+| Answer is always "Warming up" | Screen loop hasn't completed a call yet, or it errored — check the console |
+| Nothing in console for minutes | Frame diff sees a static screen. That's correct. Lower `DIFF_THRESHOLD` to be twitchier |
+| Speech comes out of laptop speakers | `TTS_DEVICE` is blank or doesn't match — run check_setup for exact names |
+| Numbers get misread | Set `VISION_DETAIL = "high"` in config, and crop the region tighter |
+| `it hears NOTHING` in check_setup | Loopback device enumerated but disabled — enable Stereo Mix in `mmsys.cpl`, or use VB-Audio Cable |
+| Console never prints `heard:` | Everything is under the silence floor. Lower `AUDIO_SILENCE_RMS` in config |
+| It transcribes its own answers | The self-gate failed — check that `TTS_DEVICE` and `AUDIO_DEVICE` aren't the same loop |
+| `mic is silent` in check_setup | Mic muted or blocked. `mmsys.cpl` → Recording → Properties → Levels, and Settings → Privacy → Microphone |
+| Remote speech appears twice | You're on speakers, so the mic hears them too. Use headphones |
+| Spoken answers are too slow | Raise `TTS_SPEED` in `.env` (0.25–4.0, default 1.5) |
+| Answers arrive in the wrong language | Expected: it answers in the language of the room, following the transcript |
