@@ -10,6 +10,27 @@ python -m venv .venv
 copy .env.example .env      # then paste the key into .env
 ```
 
+### Every new machine needs this again
+
+Two things live outside the repo and do not travel with a clone:
+
+1. **`.env`** — gitignored, so the API key never reaches GitHub. Copy the
+   example and paste the key in.
+2. **The loopback recording device** — a Windows sound setting, not a file.
+   Enable Stereo Mix (below) or the bot hears only you, never the meeting.
+
+A giveaway that Stereo Mix is still disabled: `check_setup` finds exactly **one**
+match, on WDM-KS. Enabled, it appears four times — MME, DirectSound, WASAPI and
+WDM-KS — because Windows only exposes the other host APIs once the device is on:
+
+```
+[09:43:29] audio [Them] failed: no input device would open:
+  [13] Windows WDM-KS: Error opening InputStream: Invalid device [PaErrorCode -9996]
+```
+
+The microphone needs no setup — it falls back across host APIs on its own, which
+is why `[You]` still starts after WASAPI fails to create a capture pin.
+
 Check everything before you need it to work:
 
 ```powershell

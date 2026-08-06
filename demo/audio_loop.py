@@ -656,11 +656,16 @@ class AudioLoop:
             elif not source.alive:
                 lines.append(f"{source.label}: not running")
             else:
-                heard = "hearing audio" if source.level >= source.floor else "silent"
-                lines.append(
-                    f"{source.label}: {source.device} via {source.api}, "
-                    f"{heard} (level {source.level:.5f})"
-                )
+                # At startup this is sampled over a second or two, so a quiet
+                # room reads the same as a broken device. Say which it is rather
+                # than calling a working mic "silent" and alarming the user.
+                if source.level >= source.floor:
+                    state = f"hearing audio (level {source.level:.5f})"
+                elif source.frames == 0:
+                    state = "open but no audio arriving — check it is not muted"
+                else:
+                    state = f"open, nothing said yet (level {source.level:.5f})"
+                lines.append(f"{source.label}: {source.device} via {source.api}, {state}")
         return lines
 
     # --- read side (called from the trigger path) --------------------------
