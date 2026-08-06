@@ -353,7 +353,61 @@ def keys(seconds: float = 30.0) -> None:
         line(WARN, "   apps, or run this terminal as administrator.")
 
 
+def say() -> None:
+    """Speak a test line through the configured device, so you know you'd hear it.
+
+    "I pressed the button and nothing was said" has two causes that look the
+    same: the press never happened, or it did and the audio went somewhere you
+    are not listening. This settles the second.
+    """
+    if config.missing_key():
+        line(BAD, "no API key — cannot test speech")
+        return
+    from openai import OpenAI
+
+    from . import speech
+
+    target = speech.resolve_device(config.TTS_DEVICE)
+    if config.TTS_DEVICE and target is None:
+        line(BAD, f"TTS_DEVICE={config.TTS_DEVICE!r} matches no output device")
+        line(WARN, "   the name must appear in the list from `check_setup`.")
+        line(WARN, "   Non-ASCII names work only if .env is saved as UTF-8 —")
+        line(WARN, "   if in doubt use an ASCII fragment of the device name.")
+        return
+    where = "system default" if target is None else f"[{target}]"
+    if target is not None:
+        name = next((n for i, n, _c in speech.list_output_devices() if i == target), "?")
+        where = f"[{target}] {name}"
+    print(f"\n  speaking through {where} at speed {config.TTS_SPEED}...")
+    print("  LISTEN NOW.\n")
+
+    errors: list[str] = []
+    speaker = speech.Speaker(
+        OpenAI(api_key=config.OPENAI_API_KEY), device=target,
+        on_error=lambda m: errors.append(m),
+    )
+    speaker.say(
+        "This is the meeting support bot. If you can hear this, "
+        "spoken answers will reach you."
+    )
+    deadline = time.monotonic() + 30
+    while speaker.is_speaking() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    speaker.stop()
+
+    if errors:
+        for message in errors:
+            line(BAD, message)
+    else:
+        line(OK, "speech played without error")
+        line(WARN, "   if you heard nothing, it went to the wrong device —")
+        line(WARN, "   set TTS_DEVICE in .env to a fragment of the right name.")
+
+
 def main() -> None:
+    if "--say" in sys.argv:
+        say()
+        return
     if "--keys" in sys.argv:
         keys()
         return

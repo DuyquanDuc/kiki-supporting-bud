@@ -106,10 +106,20 @@ PENDING_ANSWER_TTL = 45
 #         round trip. With no transcript yet it is simply "read the screen".
 #
 # Most USB footswitches emulate a keypress, so whatever key yours sends goes here.
-HOTKEY_AUDIO = "<f9>"
-HOTKEY_FULL = "<f10>"
-HOTKEY_REGION = "<f8>"
-HOTKEY_QUIT = "<f12>"
+#
+# Settable in .env, because the F-keys are contested: screenshot tools bind F10,
+# browsers take F12, and OEM laptops send media keys unless Fn is held. If a
+# button does nothing — or does something else entirely — another app owns that
+# key, and the fix is to pick one nothing else wants. `check_setup --keys` shows
+# what actually arrives.
+#
+# Single keys only, by pynput's name: f1-f24, insert, delete, home, end,
+# page_up, page_down, pause, scroll_lock, print_screen, menu. The angle brackets
+# are optional. Rarely-contested picks: pause, scroll_lock, insert, f13-f24.
+HOTKEY_AUDIO = os.getenv("HOTKEY_AUDIO", "<f9>").strip()
+HOTKEY_FULL = os.getenv("HOTKEY_FULL", "<f10>").strip()
+HOTKEY_REGION = os.getenv("HOTKEY_REGION", "<f8>").strip()
+HOTKEY_QUIT = os.getenv("HOTKEY_QUIT", "<f12>").strip()
 
 # --- Overlay ---------------------------------------------------------------
 # Off by default: the point of this rig is a voice in your ear, and a card that

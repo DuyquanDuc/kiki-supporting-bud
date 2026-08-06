@@ -391,8 +391,10 @@ def main() -> None:
     log(
         f"ready — {key(config.HOTKEY_AUDIO)} what was said, "
         f"{key(config.HOTKEY_FULL)} said + screen, "
-        f"{key(config.HOTKEY_QUIT)} quit"
+        f"{key(config.HOTKEY_QUIT)} quit (or Ctrl+C here)"
     )
+    if not actions:
+        log("WARNING: no hotkeys registered — check the HOTKEY_ names in .env")
     if args.offline:
         status = "offline mode"
     elif audio is not None:
