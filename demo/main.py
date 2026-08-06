@@ -361,12 +361,30 @@ def main() -> None:
 
     from pynput import keyboard as kb
 
-    hotkeys = kb.GlobalHotKeys({
-        config.HOTKEY_AUDIO: trigger.fire_audio,
-        config.HOTKEY_FULL: trigger.fire_full,
-        config.HOTKEY_REGION: repick,
-        config.HOTKEY_QUIT: lambda: root.after(0, quit_all),
-    })
+    # A plain Listener with explicit matching, NOT GlobalHotKeys. The latter
+    # silently fails to fire on some machines while the keys are demonstrably
+    # arriving — measured 0/3 against 3/3 for a Listener on identical presses —
+    # and a button that does nothing with no error is the worst failure this
+    # app has. Single keys need no combo parsing anyway.
+    actions = {}
+    for spec, action in (
+        (config.HOTKEY_AUDIO, trigger.fire_audio),
+        (config.HOTKEY_FULL, trigger.fire_full),
+        (config.HOTKEY_REGION, repick),
+        (config.HOTKEY_QUIT, lambda: root.after(0, quit_all)),
+    ):
+        key = getattr(kb.Key, spec.strip("<>").lower(), None)
+        if key is None:
+            log(f"WARNING: unknown hotkey {spec!r} — that button will not work")
+            continue
+        actions[key] = action
+
+    def on_press(key) -> None:
+        action = actions.get(key)
+        if action is not None:
+            action()
+
+    hotkeys = kb.Listener(on_press=on_press)
     hotkeys.start()
 
     key = lambda h: h.strip("<>").upper()

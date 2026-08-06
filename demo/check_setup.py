@@ -278,7 +278,85 @@ def meter(seconds: float = 30.0) -> None:
             pass
 
 
+def keys(seconds: float = 30.0) -> None:
+    """Show which keys actually reach the app, and whether the hotkeys fire.
+
+    "F9 does nothing" has three completely different causes and they are
+    indistinguishable from the outside: the key never arrives (laptop Fn-lock
+    sends media keys instead of F9), it arrives but the hotkey does not match, or
+    it fires fine and the answer went somewhere you did not notice. This tells
+    you which.
+    """
+    from pynput import keyboard as kb
+
+    fired: list[str] = []
+    seen: list[str] = []
+
+    def note(name: str):
+        def handler() -> None:
+            fired.append(name)
+            print(f"\n  >>> {name} FIRED — the hotkey works", flush=True)
+        return handler
+
+    # Same mechanism the app uses, so this proves the real thing rather than a
+    # lookalike.
+    actions = {}
+    for spec, label in (
+        (config.HOTKEY_AUDIO, "F9 answer"),
+        (config.HOTKEY_FULL, "F10 screen"),
+        (config.HOTKEY_REGION, "F8 region"),
+        (config.HOTKEY_QUIT, "F12 quit"),
+    ):
+        key = getattr(kb.Key, spec.strip("<>").lower(), None)
+        if key is None:
+            line(BAD, f"{spec!r} is not a key name pynput knows")
+            continue
+        actions[key] = note(f"{spec} ({label})")
+
+    def on_press(key) -> None:
+        name = getattr(key, "name", None) or str(key)
+        seen.append(name)
+        print(f"  key seen: {name}", flush=True)
+        action = actions.get(key)
+        if action is not None:
+            action()
+
+    listener = kb.Listener(on_press=on_press)
+    listener.start()
+
+    print(f"\n  Configured: {config.HOTKEY_AUDIO} {config.HOTKEY_FULL} "
+          f"{config.HOTKEY_REGION} {config.HOTKEY_QUIT}")
+    print(f"  PRESS F9, F10, F8 and F12 now — {int(seconds)}s. Ctrl+C to stop.\n")
+    try:
+        time.sleep(seconds)
+    except KeyboardInterrupt:
+        pass
+    listener.stop()
+
+    print()
+    if fired:
+        line(OK, f"{len(fired)} hotkey(s) fired: {', '.join(fired)}")
+        line(WARN, "   so the keys work — if the app seems dead, the answer is")
+        line(WARN, "   going somewhere you are not seeing. The overlay is off by")
+        line(WARN, "   default, so watch the CONSOLE for 'button -> ...' lines.")
+    elif seen:
+        line(BAD, "keys arrived, but none matched a hotkey")
+        line(WARN, f"   what arrived: {', '.join(dict.fromkeys(seen))[:120]}")
+        line(WARN, "   if pressing F9 shows something other than 'f9', your")
+        line(WARN, "   laptop is sending media keys. Press Fn+F9, or turn on")
+        line(WARN, "   Function Lock (often Fn+Esc), or set HOTKEY_AUDIO in")
+        line(WARN, "   demo/config.py to a key that does arrive.")
+    else:
+        line(BAD, "no key presses reached the app at all")
+        line(WARN, "   pynput cannot see input going to a window running as")
+        line(WARN, "   administrator unless it is elevated too. Close elevated")
+        line(WARN, "   apps, or run this terminal as administrator.")
+
+
 def main() -> None:
+    if "--keys" in sys.argv:
+        keys()
+        return
     if "--meter" in sys.argv:
         meter()
         return
