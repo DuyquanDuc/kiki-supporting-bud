@@ -225,13 +225,35 @@ when they move on to something new.
 
 ### F10 — said + shown
 
-Sends the actual screenshot alongside the transcript, so it reads figures,
-labels and error text that the screen loop's one-line summary never recorded —
-*"which account is in Discovery and how much"* needs the pixels, not a summary.
-Costs a vision round trip, **~2.5s**.
+Sends the actual screenshot alongside the transcript. Costs a vision round trip,
+**~2.5s**.
 
-With no transcript yet, F10 is simply "read my screen", which is why two buttons
-covers everything.
+**The screen usually *is* the question.** A coding exercise, a failing test, a
+stack trace, a diff waiting on review — those are asks, not scenery, and
+describing them back is the one thing you cannot use, because you are looking at
+them. F10 solves what is on screen:
+
+```
+[08:41:02] button -> 2600ms (full)
+           | Use a write pointer for nonzeros, then fill the rest with zeros.
+           | ---
+           | public static int[] moveZeros(int[] nums) {
+           |     int write = 0;
+           |     for (int num : nums) if (num != 0) nums[write++] = num;
+           |     while (write < nums.length) nums[write++] = 0;
+           |     return nums;
+           | }
+           | }
+```
+
+It matches the class and method signature already on screen rather than
+inventing its own.
+
+Priority when the two disagree:
+
+1. Someone asked out loud → answer that, using the screen to ground it
+2. Nothing said, screen poses a problem → solve it
+3. Screen poses nothing → say what it shows and the point it makes
 
 **Voice only by default.** No card appears when you press — the answer is spoken
 to your pinned output device and nothing renders on screen. Every outcome is

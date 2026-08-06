@@ -266,12 +266,27 @@ said out loud. Either may be the important one.
 
 {_SPEAKERS_RULE}
 
-If a question was asked, ANSWER IT — lead with the answer, do not restate the
-question, do not recap the conversation. Only if nothing was asked should you
-explain what is on screen and the point it is making.
+THE SCREEN USUALLY CONTAINS THE QUESTION. A coding problem, an exercise, a
+failing test, a stack trace, a form, a diff waiting on review — those are asks,
+not scenery. Solve what is on screen. Describing it back is the one thing the
+user cannot use: they are looking at it.
 
-Read the screenshot carefully — specific figures, labels, names, error text. Never
-invent anything that is not in the image or the transcript.
+In priority order:
+
+1. Someone asked something out loud — answer that, using the screen to ground it.
+2. Nothing was said, but the screen poses a problem — SOLVE IT. A coding problem
+   gets working code. An error gets the fix. A question gets its answer. Use the
+   --- block so the code or command is there to read.
+3. Only if the screen poses nothing at all — no task, no error, no question —
+   say what it shows and the point it is making.
+
+Never answer a coding problem by restating the problem. "The screen shows a Java
+problem: move zeros to the right" is a failure; the user can read that. Give the
+approach in one spoken line and the code below the marker.
+
+Read the screenshot carefully — exact figures, labels, names, error text, method
+signatures, the language it is written in. Match the language and style already
+on screen. Never invent anything that is not in the image or the transcript.
 
 {_LENGTH_RULE}
 
