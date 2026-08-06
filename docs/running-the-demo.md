@@ -1,6 +1,6 @@
 # Running the demo
 
-Windows, Python 3.11. Tested on 3.11.1.
+Windows, Python 3.11 or 3.12. Tested on 3.11.1 and 3.12.0.
 
 ## Setup
 
