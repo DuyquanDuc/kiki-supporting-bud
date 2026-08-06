@@ -79,11 +79,17 @@ was spoken or is sitting on the slide.
 Transcript only, deliberately blind to the screen. Feeding it screen context
 made it answer questions nobody asked.
 
-**It answers questions and does nothing else.** An earlier version fell back to
-summarising the discussion when it found no question, and that became what you
-got most of the time: press the button mid-meeting, get read a recap of the
-conversation you had just sat through. It now replies "No question asked" and
-stops.
+**A question gets answered and nothing else** — no scene-setting, no recap.
+With no question it catches you up instead: what is being discussed and where it
+stands, leading with anything the room is waiting on you for.
+
+That fallback was removed once and then restored, which is worth explaining. In
+the first version it fired constantly, because summarising was what the model
+did whenever it could not locate the question — and it usually could not, since
+the question was never passed explicitly and the transcript arrived as one flat
+blob. The summary was a symptom of the broken question path, not a feature.
+With the question handed over directly and the transcript split into
+`BACKGROUND` / `JUST SAID`, it only fires when there genuinely is no question.
 
 1. **Flush.** Transcribe the last 14 seconds as one clip, right now.
 2. **If the flush found nothing new**, serve the parked pre-answer. *0ms.*

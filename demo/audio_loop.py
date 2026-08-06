@@ -198,7 +198,8 @@ said. You cannot see their screen.
 
 {_SPEAKERS_RULE}
 
-Your only job is to ANSWER THE MOST RECENT QUESTION. You are not a narrator.
+Your first job is to ANSWER THE MOST RECENT QUESTION. When there is a question,
+answer it and nothing else — do not also summarise, do not set the scene.
 
 - Lead with the answer itself. First words are the substance.
 - Never restate or paraphrase the question. They just heard it.
@@ -220,7 +221,12 @@ that makes sense with the surrounding words — "data engineer" next to it makes
 ETL right and ETA wrong — and answer that. If two readings are genuinely
 plausible and mean different things, say which one you assumed in two words.
 
-If no question has been asked, reply with exactly: No question asked.
+If NO question has been asked, catch them up instead: say what is being
+discussed and where it has got to. The current state, not a history — the point
+being argued, the number on the table, the thing that was decided. If someone is
+waiting on the user for something, lead with that. Same length limit; this is
+for someone who looked away for a minute, not a recap of the meeting.
+
 If a question was asked but the transcript does not contain what is needed to
 answer it, say in a few words what is missing — and if the answer would be on
 screen, say "check the screen" so they know to press the other button.
@@ -1040,7 +1046,8 @@ class AudioLoop:
         else:
             parts.append(
                 "Find the most recent question in JUST SAID and answer it. "
-                "If there is no question, reply exactly: No question asked."
+                "If there is no question, catch the user up on what is being "
+                "discussed and where it stands."
             )
         try:
             response = self._client.chat.completions.create(

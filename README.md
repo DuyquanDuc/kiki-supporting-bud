@@ -61,7 +61,7 @@ Two buttons, deliberately different jobs — latencies measured, not projected:
 
 | Key | Uses | Latency |
 |---|---|---|
-| **F9** | Answers the **last question asked**. Transcript only, blind to the screen. Never narrates — no question, no answer | **~3.3s** after fresh speech, **0ms** if already pre-answered |
+| **F9** | Answers the **last question asked**, transcript only, blind to the screen. No question? Catches you up on where the discussion stands | **~3.3s** after fresh speech, **0ms** if already pre-answered |
 | **F10** | Said **and** shown. Sends the real screenshot, so it reads detail no summary kept | **~2.5s** |
 
 F9's fast path does no model call at all: the audio loop answered the question in

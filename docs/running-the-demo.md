@@ -186,8 +186,9 @@ saved to `demo/data/region.json` and reused. `--pick-region` redraws it.
 Transcript only. It deliberately cannot see your screen, so it answers what was
 asked rather than describing a slide nobody mentioned.
 
-**It answers questions and nothing else** — it will not narrate or recap the
-discussion. If nobody has asked anything it says "No question asked" and stops.
+A question gets answered and nothing else — no preamble, no recap. If nobody has
+asked anything, it catches you up instead: what is being discussed and where it
+stands, leading with whatever the room is waiting on you for.
 
 Pressing transcribes the last 14 seconds first, so a question you *just* heard is
 included rather than waiting for the chunk cadence to catch up.
