@@ -144,8 +144,8 @@ TTS_SAMPLE_RATE = 24_000
 # Playback speed. Default voices read at a presenter's pace, which is far too
 # slow when you are trying to catch an answer inside a live conversation — you
 # have already missed the next sentence of the meeting. The API caps this at 4.0;
-# 1.5 is noticeably quicker while still easy to follow on one listen.
-TTS_SPEED = float(os.getenv("TTS_SPEED", "1.5"))
+# 1.75 is brisk but still clear on a single listen, which is all you get.
+TTS_SPEED = float(os.getenv("TTS_SPEED", "1.75"))
 # Spoken answers get truncated to this. Long speech is the failure mode here —
 # your coworker keeps talking over it. Sized to fit the ~45-word answer the
 # screen loop is asked for, plus a CRM line when one matches.
