@@ -340,12 +340,42 @@ def keys(seconds: float = 30.0) -> None:
         line(WARN, "   going somewhere you are not seeing. The overlay is off by")
         line(WARN, "   default, so watch the CONSOLE for 'button -> ...' lines.")
     elif seen:
+        arrived = list(dict.fromkeys(seen))
         line(BAD, "keys arrived, but none matched a hotkey")
-        line(WARN, f"   what arrived: {', '.join(dict.fromkeys(seen))[:120]}")
-        line(WARN, "   if pressing F9 shows something other than 'f9', your")
-        line(WARN, "   laptop is sending media keys. Press Fn+F9, or turn on")
-        line(WARN, "   Function Lock (often Fn+Esc), or set HOTKEY_AUDIO in")
-        line(WARN, "   demo/config.py to a key that does arrive.")
+        line(WARN, f"   what arrived: {', '.join(arrived)[:140]}")
+        line(WARN, "   Your F-row is in multimedia mode: pressing F9 sends its")
+        line(WARN, "   secondary function instead of F9. Two ways out.")
+        print()
+        line(WARN, "   1. Turn on Function Lock so F-keys send F-keys. Usually")
+        line(WARN, "      Fn+Esc, sometimes a padlock icon on Esc or Fn, or")
+        line(WARN, "      BIOS > 'Action Keys Mode' / 'Hotkey Mode' = Disabled.")
+        print()
+
+        # Anything that arrived intact and is not a modifier, a character, or
+        # already bound is a candidate the user has physically confirmed works.
+        modifiers = {
+            "ctrl_l", "ctrl_r", "shift", "shift_r", "alt_l", "alt_r", "alt_gr",
+            "cmd", "cmd_r", "caps_lock", "tab", "esc", "enter", "backspace",
+        }
+        bound = {getattr(k, "name", str(k)) for k in actions}
+        usable = [
+            name for name in arrived
+            if name not in modifiers and name not in bound
+            and not name.startswith("'") and not name.startswith("<")
+        ]
+        line(WARN, "   2. Or bind to a key that does arrive. Put in .env:")
+        if usable:
+            for spec, name in zip(("HOTKEY_AUDIO", "HOTKEY_FULL", "HOTKEY_QUIT"), usable):
+                line(WARN, f"        {spec}=<{name}>")
+            if len(usable) < 3:
+                line(WARN, "      (press more keys to find enough candidates)")
+        else:
+            line(WARN, "        HOTKEY_AUDIO=<pause>")
+            line(WARN, "        HOTKEY_FULL=<scroll_lock>")
+            line(WARN, "        HOTKEY_QUIT=<insert>")
+            line(WARN, "      then re-run this to confirm those arrive.")
+        print()
+        line(WARN, "   Re-run and press your candidates first to check them.")
     else:
         line(BAD, "no key presses reached the app at all")
         line(WARN, "   pynput cannot see input going to a window running as")
