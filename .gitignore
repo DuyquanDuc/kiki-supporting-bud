@@ -9,3 +9,6 @@ demo/data/captures/
 # Reference documents are yours and often sensitive — never commit them.
 demo/data/docs/*
 !demo/data/docs/README.md
+
+# Your own notes — real names, clients, projects. Never commit these.
+demo/data/profile.md
