@@ -235,139 +235,18 @@ meeting.
 
 | Case | Latency |
 |---|---|
-| Someone just spoke — flush finds fresh speech | **~3.3s** — transcribe + answer |
-| Quiet since the question, already pre-answered | **0ms** — no call at all |
+| Someone has spoken since your last press | **2.5–3.8s** — transcribe + answer |
 | Nothing heard yet | instant "nothing transcribed yet" |
 
 Press right after the question ends, not while it is still being asked — words
 that have not been spoken cannot be transcribed.
 
-### Buy time on purpose: ask them to repeat it
+### Buying time still helps
 
-*"Sorry, could you say that again?"* is a normal thing to say in a meeting, and
-it is the best move available here. The seconds it buys are exactly what the
-pre-answer needs, so by the time they finish repeating, the answer is parked.
-
-Press when they finish and you get it at **0ms** — the console shows
-`button -> 0ms (repeat)`.
-
-This works because a repeat would otherwise ruin it. Fresh speech normally
-discards the parked answer as stale, so without special handling the repeat
-would trigger a full recompute and the tactic would *cost* time. The press-time
-transcription is compared against the question already answered, and a close
-match serves the parked answer instead.
-
-Matching is on character trigrams rather than words, so it survives rephrasing
-and works in Japanese, which has no spaces to split on. Measured on real
-rewordings across all three languages: repeats score 0.67–0.89, unrelated
-questions 0.00–0.10, against a 0.45 threshold — a wide gap, so it does not fire
-when they move on to something new.
-
-### F10 — said + shown
-
-Sends the actual screenshot alongside the transcript. Costs a vision round trip,
-**~2.5s**.
-
-**The screen usually *is* the question.** A coding exercise, a failing test, a
-stack trace, a diff waiting on review — those are asks, not scenery, and
-describing them back is the one thing you cannot use, because you are looking at
-them. F10 solves what is on screen:
-
-```
-[08:41:02] button -> 2600ms (full)
-           | Use a write pointer for nonzeros, then fill the rest with zeros.
-           | ---
-           | public static int[] moveZeros(int[] nums) {
-           |     int write = 0;
-           |     for (int num : nums) if (num != 0) nums[write++] = num;
-           |     while (write < nums.length) nums[write++] = 0;
-           |     return nums;
-           | }
-           | }
-```
-
-It matches the class and method signature already on screen rather than
-inventing its own.
-
-Priority when the two disagree:
-
-1. Someone asked out loud → answer that, using the screen to ground it
-2. Nothing said, screen poses a problem → solve it
-3. Screen poses nothing → say what it shows and the point it makes
-
-**One private window, opened once, holding the running history.** Not a popup per
-press. It shows what was heard and what was answered, colour-coded by speaker,
-with code set apart and monospaced. Scroll back through it; **F7** hides and
-shows it.
-
-```
-Them: So, next question. Can you move all zeros in the array to the right?
-You: Sure, give me a second.
-
-> Use a write pointer for nonzeros, then fill the rest with zeros.
-    public static int[] moveZeros(int[] nums) {
-        int write = 0;
-        ...
-  2600ms · full
-```
-
-**Read from this window, not the terminal.** It is excluded from screen capture —
-measured at `760x460` with **0 pixels** visible to a screenshot. VS Code's
-terminal and Windows Terminal own their own windows, so neither can be hidden;
-anything you read there is in the screen share.
-
-It never takes focus, so scrolling it cannot swallow a keystroke meant for the
-meeting. It follows the newest line only when you are already at the bottom —
-scroll back to read something and it leaves you there.
-
-`OVERLAY_MODE` in `.env`:
-
-| Value | Behaviour |
-|---|---|
-| `history` *(default)* | one window with the running log |
-| `read` | a card, only when the answer has something to look at |
-| `always` | a card on every answer |
-| `off` | nothing; voice only |
-
-**The console is the transcript.** Every answer is printed under its timing
-line, interleaved with the `heard [...]` lines, so that window is a running
-record of the meeting and what was answered. Speech is gone the moment it plays;
-keep the console somewhere you can glance at.
-
-### Keeping it out of your screen share
-
-The design is a private assist — voice in your ear, no bot in the call, nothing
-rendered for anyone else. That collapses the moment you share your screen with
-the console sitting there full of answers.
-
-On by default (`HIDE_FROM_CAPTURE=1`). Windows' `SetWindowDisplayAffinity` with
-`WDA_EXCLUDEFROMCAPTURE` makes a window completely normal on your monitor and
-*absent* from anything capturing the screen — not blacked out, simply not
-present. Verify it rather than trusting it:
-
-```powershell
-.\.venv\Scripts\python.exe -m demo.check_setup --hide
-```
-
-It puts a marker window on screen, screenshots that region and counts its
-pixels: `64800 pixels -> 0` means genuinely invisible.
-
-**The console is the weak point.** Windows Terminal draws in its own window,
-which this process does not own, so the console cannot be hidden from inside —
-and the console is where answers print. Classic `conhost` can be hidden. The
-check reports which you have, and the app warns at startup:
-
-```
-screen-share: running under Windows Terminal ...
-screen-share: WARNING — answers print here and WILL be shared
-```
-
-Either run under conhost, or keep that window off the screen you share (another
-monitor, or share a single application window rather than the whole desktop).
-
-**It hides windows, nothing else.** Spoken answers still reach the call if
-`TTS_DEVICE` points at your speakers, and it cannot help against a phone camera
-pointed at your screen.
+*"Sorry, could you say that again?"* is worth asking — it gives you thinking
+time and gives the bot a cleaner second recording of the question. It no longer
+produces an instant answer, though: with pre-answering removed there is nothing
+parked to serve, so the press still costs its usual few seconds.
 
 ### Answers you have to read, not hear
 
@@ -376,7 +255,7 @@ code, a command, an exact identifier — it comes back in two parts split by a
 `---` line. Only the part above is spoken; the whole thing is printed:
 
 ```
-[08:32:56] button -> 2100ms (live transcript)
+[08:32:56] button -> 2800ms (live transcript)
            | Use a HashMap and merge counts as you go.
            | ---
            | Map<String, Integer> counts = new HashMap<>();
@@ -387,8 +266,8 @@ So the speech stays short while the console holds the real thing. Ordinary
 answers get no split — a number, a name or a yes/no is just spoken and printed
 as one line.
 
-The console tells you which fired: `button -> 0ms (overheard)`,
-`(live transcript)`, `(full)`, or `(screen)`.
+The console tells you which path ran: `button -> 2800ms (live transcript)`,
+`(full)`, or `(screen)`.
 
 A USB footswitch that emulates a keypress maps straight onto either — change
 `HOTKEY_AUDIO` / `HOTKEY_FULL` in `demo/config.py` to whatever key yours sends.

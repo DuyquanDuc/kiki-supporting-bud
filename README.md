@@ -1,30 +1,58 @@
 # Meeting Support Bot
 
-During a meeting, a coworker shares a screen showing a number. You press a
-button. Within about a second you get back what that number is and who owns it,
-spoken quietly into your earphones. Nothing appears on screen.
+During a meeting, someone asks you something — or a coding problem is sitting on
+the shared screen. You press a key. A few seconds later the answer is spoken
+quietly into your earphones. No bot joins the call, nothing renders where a
+screen share can see it.
 
-No wake word, no bot voice in the meeting, no waiting.
+## What it does
 
-## Core design principle
+Two buttons. Both answer into your earphones; nothing renders where a screen
+share can see it.
 
-**Do the work before the button, not after.**
+| Key | Uses | Latency |
+|---|---|---|
+| **F9** | The **last question asked**, from the transcript. Blind to the screen on purpose. No question? Catches you up on where the discussion stands | **2.5–3.8s** |
+| **F10** | That, plus a screenshot taken as you press — so it reads the code, table or error you are looking at | **~2.5s** |
 
-The naive version screenshots, transcribes, retrieves, and reasons *after* you
-press. That chain is four to eight seconds and it feels broken in a live
-meeting. Almost every step can happen earlier.
+Answers are cues, not scripts: 15–25 words, front-loaded, in whichever of
+Vietnamese, Japanese or English the question was asked. Code comes back in a
+private window, not spoken.
 
-Everything in this project follows from that one idea: background loops keep
-screen and audio context warm, so the button press only has to do the last mile.
+## The principle, and how it was overturned
+
+This began with one rule: **do the work before the button**. Screenshot,
+transcribe and reason ahead of time, so the press only does the last mile.
+
+Both halves of that turned out to be wrong, and the measurements are worth
+keeping because they are counterintuitive:
+
+**The screen loop** described the shared screen every few seconds so the button
+needed no vision call. But F10 sends the real pixels anyway, which is fresher
+and carries detail no summary kept — and on a video call the frame diff fired on
+every head movement, burning ~15 high-detail calls a minute to re-describe a
+webcam. Now the screen is grabbed on press, in ~160ms.
+
+**Pre-answering** composed an answer for every overheard question, ready to serve
+instantly. But any fresh speech invalidates a parked answer, so in a live meeting
+it almost never fired — while spending a model call on questions nobody asked
+about.
+
+**Continuous chunking** was the last to go, and it was actively destructive.
+Against known ground truth, the same 20s of speech scored **0.992** transcribed
+in one pass, **0.977** split in two, **0.844** split in four. Every boundary
+lands mid-word and both halves come back wrong: "cái ví dụ HTML" became "cái ví
+TML". Latency barely grows with length, so there was nothing to buy.
+
+What survived is the opposite design: **capture everything, compute nothing until
+asked.** Audio accumulates in memory, a press transcribes it in a single pass and
+answers. One call per press instead of hundreds per meeting, and better answers.
 
 ## Status
 
-**Working local demo of the silent-button path.** Screen loop, frame diff,
-spoken answer pinned to a chosen output device, and an optional private overlay
-with a live latency readout (off by default — voice only). The screen loop answers whatever the screen actually raises —
-slide, chart, spreadsheet, error message, code — and falls back to summarising
-it when nothing is being asked. The static sales table is now an extra line
-appended when an on-screen figure matches a deal, not the answer itself.
+Working. Listens on loopback (`Them`) and your microphone (`You`), answers in
+three languages, reads your own `.txt`/`.md` notes from `demo/data/docs`, and
+keeps a private history window that is excluded from screen capture.
 
 ```powershell
 python -m venv .venv
@@ -33,42 +61,10 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m demo.main            # F9 / F10 to ask, F12 to quit
 ```
 
-No API key yet? `--offline` runs the whole rig against a canned slide.
-Full instructions, including the YouTube-video test setup, in
-[docs/running-the-demo.md](docs/running-the-demo.md).
-
-**The meeting audio loop is built.** It listens on a loopback device, keeps a
-rolling 15-minute transcript, and pre-answers questions it overhears so the
-button stays instant. One caveat that will cost you a meeting if you skip it:
-Windows ships Stereo Mix *disabled but still enumerated*, so it looks connected
-and captures nothing. `check_setup` plays a test tone to prove otherwise — see
+One caveat that will cost you a meeting if you skip it: Windows ships Stereo Mix
+*disabled but still enumerated*, so it looks connected and captures nothing.
+`check_setup` plays a test tone to prove otherwise — see
 [docs/running-the-demo.md](docs/running-the-demo.md#making-it-hear-the-meeting).
-
-Not built: push-to-talk voice button, live CRM. See
-[docs/demo-scope.md](docs/demo-scope.md).
-
-## Shape of it
-
-Three loops running independently:
-
-| Part | Runs | Job |
-|---|---|---|
-| Meeting audio | every 7s, background | Rolling transcript from loopback **and** mic, and pre-answer any question it overhears |
-| Screen | on press only | F10 grabs the region and sends the real pixels (~160ms) |
-| Trigger | on button press | Transcribe the last few seconds, then answer |
-
-Two buttons, deliberately different jobs — latencies measured, not projected:
-
-| Key | Uses | Latency |
-|---|---|---|
-| **F9** | Answers the **last question asked**, transcript only, blind to the screen. No question? Catches you up on where the discussion stands | **~3.3s** after fresh speech, **0ms** if already pre-answered |
-| **F10** | Said **and** shown. Sends the real screenshot, so it reads detail no summary kept | **~2.5s** |
-
-F9's fast path does no model call at all: the audio loop answered the question in
-the background the moment it heard it, so the press is a variable read. F10 is
-the one you hold for detail — *"which account is in Discovery and how much"*
-needs the pixels, not a one-line summary. With nothing heard yet, F10 is simply
-"read my screen".
 
 Running cost lands around **$1 to $2 per hour-long meeting**.
 
@@ -76,7 +72,7 @@ Running cost lands around **$1 to $2 per hour-long meeting**.
 
 | Doc | Contents |
 |---|---|
-| [architecture.md](docs/architecture.md) | The three loops, both trigger paths, latency budget |
+| [architecture.md](docs/architecture.md) | Capture, both trigger paths, and why the original design was inverted |
 | [components.md](docs/components.md) | Model and hardware choices, costs, what was rejected and why |
 | [screen-capture.md](docs/screen-capture.md) | Capture timing, cropping, detail level, deck pre-indexing |
 | [demo-scope.md](docs/demo-scope.md) | What to build for the demo, what to fake or skip |
