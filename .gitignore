@@ -5,3 +5,7 @@ __pycache__/
 venv/
 demo/data/region.json
 demo/data/captures/
+
+# Reference documents are yours and often sensitive — never commit them.
+demo/data/docs/*
+!demo/data/docs/README.md

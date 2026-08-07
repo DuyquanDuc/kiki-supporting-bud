@@ -41,6 +41,42 @@ It verifies imports, whether your key can actually see the configured model ids,
 which output device speech will land on, whether the input device can actually
 hear anything, and whether a capture region is saved.
 
+## Giving it documents to work from
+
+Drop files into `demo/data/docs` before a meeting — a job spec, your CV, an
+architecture note, the agenda, last quarter's numbers. The bot searches them
+when answering.
+
+Supported: `.txt` `.md` `.csv` `.json` `.yaml`, and `.pdf`.
+
+The difference on real questions:
+
+| Question | Without documents | With |
+|---|---|---|
+| Does a rollback restore the database? | *"Not necessarily — check the rollback plan on screen."* | *"No. Rollback only swaps traffic back; schema changes stay forward-only."* |
+| Who do I escalate to? | *"I don't have the owner's name."* | *"Huong — escalate the Atlas migration to her, not the platform team."* |
+
+**Latency is not the trade-off you would expect.** All the expensive work —
+reading, chunking, embedding — happens at startup, because the documents are
+known before the meeting. That is the same principle the audio loop runs on. The
+press costs one embedding of the question, measured at **250–500ms**, and in
+practice answers often came back *faster* with documents attached, because a
+certain answer is shorter than a hedged one.
+
+The index is cached, so restarting with unchanged files costs nothing, and
+editing one file re-embeds only that file.
+
+**Retrieval is by meaning, not keywords**, which matters across three languages:
+「ロールバックはデータベースを戻しますか」 scored **0.49** against the *English*
+rollback section. Keyword matching cannot do that. A question with nothing
+relevant in the documents attaches nothing rather than forcing a connection —
+"what is the capital of France" retrieved nothing at all.
+
+**Your documents stay on your machine.** The folder is gitignored, and only the
+passages matching a question are ever sent. Keep it relevant rather than
+exhaustive: four passages are attached to any one answer, so a folder holding
+everything you own competes with itself.
+
 ## Telling it about you
 
 `demo/data/profile.md` is free text handed to the bot before every answer. Fill

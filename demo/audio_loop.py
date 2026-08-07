@@ -621,8 +621,11 @@ class AudioLoop:
     nothing else.
     """
 
-    def __init__(self, client, sources, is_muted=None, on_event=None):
+    def __init__(self, client, sources, is_muted=None, on_event=None, docs=None):
         self._client = client
+        # Reference documents indexed before the meeting. Optional: without it
+        # the bot answers from the room and the screen alone.
+        self._docs = docs
         self.sources = [
             Source(label, candidates if not isinstance(candidates, int)
                    else [(candidates, f"device {candidates}", "pinned")])
@@ -899,6 +902,12 @@ class AudioLoop:
             said += f"JUST SAID (answer the most recent question in here):\n{focus}"
         else:
             said = "(nothing audible yet — answer from the screen alone)"
+        reference = self._reference(focus or background)
+        if reference:
+            said = (
+                "REFERENCE MATERIAL — the user's own documents. Prefer these over "
+                "your own knowledge when they conflict:\n" + reference + "\n\n" + said
+            )
         content: list[dict] = [{"type": "text", "text": said}]
         if image is not None:
             content.append({
@@ -1099,6 +1108,16 @@ class AudioLoop:
             "ready for the button"
         )
 
+    def _reference(self, query: str) -> str:
+        """Relevant passages from the user's documents, or "" if none apply."""
+        if self._docs is None or not query.strip():
+            return ""
+        try:
+            return self._docs.context(query)
+        except Exception as exc:
+            self._on_event(f"docs: lookup failed: {exc}")
+            return ""
+
     def _compose(self, question: str = "") -> str:
         """Transcript -> one spoken-length answer. No screen, by design.
 
@@ -1109,6 +1128,13 @@ class AudioLoop:
         """
         background, focus = self._split_transcript()
         parts = []
+        reference = self._reference(question or focus)
+        if reference:
+            parts.append(
+                "REFERENCE MATERIAL — the user's own documents, indexed before "
+                "the meeting. Prefer these over your own knowledge when they "
+                "conflict, and cite the file name if it matters:\n" + reference
+            )
         if background:
             parts.append(f"BACKGROUND (context only — do not answer these):\n{background}")
         parts.append(f"JUST SAID (the live part of the conversation):\n{focus}")
