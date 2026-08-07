@@ -118,11 +118,11 @@ AUDIO_BUFFER_MAX_SECONDS = float(os.getenv("AUDIO_BUFFER_MAX_SECONDS", "45"))
 # 40s. It also restores a transcript that fills in as the meeting goes, instead
 # of only when you ask.
 #
-# Settable in .env so the trade can be tested on real meeting audio rather than
-# argued from a synthetic benchmark. The 0.844-vs-0.992 figures came from
-# TTS-generated speech, which is cleaner and more evenly paced than a compressed
-# video call — a shorter sweep may hold up better on the real thing. Try 7 and
-# compare the transcript in the history window against a run at 20.
+# TESTED at 7 on real meeting audio and rejected: the transcript quality loss is
+# real, not an artefact of the synthetic benchmark, and it is not worth the
+# ~180ms it saves. Per-call overhead (~550ms) dominates transcription latency,
+# so a shorter sweep barely moves the press while tripling the call count.
+# Left settable, but 20 is the answer.
 BACKGROUND_TRANSCRIBE_SECONDS = float(os.getenv("BACKGROUND_TRANSCRIBE_SECONDS", "20"))
 # Reasoning effort for the answer call. Measured 1621ms at "low" against 1965ms
 # at default on the same question — small, but it is spent on every press.
@@ -255,6 +255,19 @@ TTS_SAMPLE_RATE = 24_000
 # have already missed the next sentence of the meeting. The API caps this at 4.0;
 # 1.75 is brisk but still clear on a single listen, which is all you get.
 TTS_SPEED = float(os.getenv("TTS_SPEED", "1.75"))
+# Speak with Windows' own voices when one matches the answer's language.
+#
+# The paid TTS was the slowest stage of a press: 2075ms to the FIRST audio byte,
+# more than transcription (813ms) and the answer call (1260ms) combined. Windows
+# synthesises the whole clip in ~125ms, roughly halving time-to-sound.
+#
+# Not a quality trade on the measure that matters: round-tripped through
+# transcription the local voices scored 1.00 for English and Japanese, against
+# 0.99 and 0.94 for the paid model. They do sound more robotic.
+#
+# Languages with no local voice (Vietnamese, on a default Windows install) fall
+# through to the API automatically. Set to 0 to always use the API.
+LOCAL_TTS = os.getenv("LOCAL_TTS", "1").strip() == "1"
 # Spoken answers get truncated to this. Long speech is the failure mode here —
 # your coworker keeps talking over it. Sized to fit the ~45-word answer the
 # screen loop is asked for, plus a CRM line when one matches.

@@ -206,6 +206,43 @@ def check_audio_in() -> None:
         print(f"         [{index:>2}] {name}  ({channels}ch)")
 
 
+def check_local_tts() -> None:
+    """Which machine speaks locally and which pays the API round trip.
+
+    Worth reporting per machine: local voices are a Windows install detail, not
+    something the repo can carry, so the same code is fast on one laptop and
+    ~1750ms slower on another with no visible difference.
+    """
+    from . import local_tts
+
+    if not config.LOCAL_TTS:
+        line(WARN, "LOCAL_TTS=0 — all speech goes to the API (~1750ms slower)")
+        return
+    voices = local_tts.available()
+    if not voices:
+        line(WARN, "no local voices — all speech goes to the API, which works")
+        line(WARN, "   but costs ~1750ms more before you hear anything.")
+        line(WARN, "   Needs `pip install pywin32` and a Windows voice installed:")
+        line(WARN, "   Settings > Time & Language > Speech > Manage voices")
+        return
+    line(OK, f"local voices for: {', '.join(sorted(voices))}")
+    for language, sample in (("en", "Testing one two three."),
+                             ("ja", "テストです。"),
+                             ("vi", "Kiểm tra thử.")):
+        if language in voices:
+            import time as _time
+
+            start = _time.perf_counter()
+            pcm = local_tts.synthesize(sample, config.TTS_SPEED)
+            elapsed = (_time.perf_counter() - start) * 1000
+            if pcm:
+                line(OK, f"   {language}: local, {elapsed:.0f}ms for the whole clip")
+            else:
+                line(BAD, f"   {language}: voice listed but synthesis failed -> API")
+        else:
+            line(WARN, f"   {language}: no voice -> falls back to the API")
+
+
 def check_data() -> None:
     rows = knowledge.load_rows(config.SALES_CSV)
     if rows:
@@ -532,6 +569,8 @@ def main() -> None:
     check_audio_in()
     print("\n-- audio in: you (microphone)")
     check_mic()
+    print("\n-- speech out (local vs API)")
+    check_local_tts()
     print("\n-- data")
     check_data()
     print("\nWhen this is clean:  python -m demo.main")

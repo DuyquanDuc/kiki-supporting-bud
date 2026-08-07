@@ -14,7 +14,7 @@ from __future__ import annotations
 import threading
 import time
 
-from . import config
+from . import config, local_tts
 from .meter import METER
 
 # Stereo Mix lags the sound card slightly, so the audio loop has to stay deaf
@@ -98,7 +98,11 @@ class Speaker:
         self._cancel = threading.Event()
         cancel = self._cancel
         self._spoke_at = time.monotonic()
-        METER.spoke(shorten(text))
+        clipped = shorten(text)
+        # Only bill what actually goes to the API. Locally synthesised speech
+        # is free, and counting it would inflate the session cost report.
+        if not (config.LOCAL_TTS and local_tts.speaks(clipped)):
+            METER.spoke(clipped)
         self._thread = threading.Thread(
             target=self._run, args=(shorten(text), cancel), daemon=True
         )
@@ -111,16 +115,31 @@ class Speaker:
             self._report(f"audio device unavailable: {exc}")
             return
 
+        # Try Windows' own voice first: ~125ms for the whole clip against
+        # ~2075ms to the API's FIRST byte. Falls through to the API when no
+        # local voice matches the language.
+        local = None
+        if config.LOCAL_TTS:
+            local = local_tts.synthesize(text, config.TTS_SPEED)
+
         stream = None
         try:
             stream = sd.RawOutputStream(
-                samplerate=config.TTS_SAMPLE_RATE,
+                samplerate=local_tts.SAMPLE_RATE if local else config.TTS_SAMPLE_RATE,
                 channels=1,
                 dtype="int16",
                 device=self._device,
                 blocksize=0,
             )
             stream.start()
+            if local:
+                # Written in blocks rather than one call so a second press can
+                # still cut it off part-way, exactly as with the streamed API.
+                for start in range(0, len(local), 4096):
+                    if cancel.is_set():
+                        break
+                    stream.write(local[start:start + 4096])
+                return
             with self._lock, self._client.audio.speech.with_streaming_response.create(
                 model=config.TTS_MODEL,
                 voice=config.TTS_VOICE,
