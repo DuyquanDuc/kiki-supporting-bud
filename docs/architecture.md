@@ -31,8 +31,8 @@ Capture and cropping details are in [screen-capture.md](screen-capture.md).
 
 - Capture **two** sources at once: system audio via loopback (`Them`) and your
   microphone (`You`), merged into one speaker-tagged transcript
-- Chunk to transcription every 20 seconds
-- Maintain a rolling 15-minute transcript buffer
+- Transcribe **nothing** in the background — audio just accumulates
+- A press transcribes everything since the last press, in one pass
 - **Pre-answer**: when a chunk contains a question, compose the answer straight
   away from transcript + current screen state and park it for the button
 

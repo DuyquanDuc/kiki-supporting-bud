@@ -1,4 +1,4 @@
-"""Background meeting-audio loop: capture, chunk, transcribe.
+"""Meeting audio: capture continuously, transcribe only on a button press.
 
 Loop 2 of the three in docs/architecture.md. Listens on **two** sources at once
 and merges them into one rolling 15-minute transcript, tagged by who spoke:
@@ -12,18 +12,21 @@ you through. And they fail independently: a machine where Stereo Mix is disabled
 still has a working mic, so one dead source degrades the transcript instead of
 killing it.
 
-An earlier version also pre-answered: any chunk that looked like a question got
-an answer composed in the background, ready for an instant press. It was removed.
-The press-time flush transcribes the last ten seconds, and *any* fresh speech
-invalidates a parked answer — so in a live meeting the fast path almost never
-fired, while a model call was spent on every question detected, most never
-served. It also filled the log with "pre-answered ..." for answers nobody heard.
+Nothing is transcribed in the background. Audio accumulates in memory and a
+press transcribes everything since the last one, in a single pass.
 
-Two gates keep this cheap and honest:
+That is the opposite of where this started, and the measurements forced it. The
+same 20s of speech scored 0.992 against known ground truth transcribed whole,
+0.977 split in two, and 0.844 split in four: every boundary lands mid-word and
+both halves come back wrong. "cái ví dụ HTML" became "cái ví TML". Latency
+scales sub-linearly (16s->1.0s, 64s->2.5s, 96s->3.9s), so one long pass is
+affordable — and it costs one call per press rather than a few hundred over a
+meeting, most of them transcribing speech nobody ever asked about.
 
-1. **Silence gate.** Chunks below an RMS floor are dropped without a call.
-   Meetings are mostly not talking, and transcription models are notorious for
-   inventing text out of silence.
+Two gates keep it honest:
+
+1. **Silence gate.** A buffer below an RMS floor is dropped without a call.
+   Transcription models are notorious for inventing text out of silence.
 2. **Self gate.** While the bot is speaking, capture on *every* source is
    discarded. Loopback would hear its own answer directly, and the mic would
    hear it out of the speakers — either way it transcribes itself and starts
@@ -501,25 +504,6 @@ def probe_loopback(device: int, seconds: float = 1.2) -> tuple[float, float]:
     return listen(play=False), listen(play=True)
 
 
-def _overlap(a: str, b: str) -> float:
-    """How much of the shorter string's character trigrams appear in the other.
-
-    Character trigrams rather than words because the transcript is Vietnamese,
-    Japanese and English: Japanese has no spaces to split on, and a repeated
-    question is never word-identical anyway ("what is ETL" vs "so can you explain
-    what ETL is"). Containment, not Jaccard, so a longer restatement of a short
-    question still scores high.
-    """
-    def grams(text: str) -> set[str]:
-        squashed = re.sub(r"[\s\.,!?？。、]+", "", text.lower())
-        return {squashed[i:i + 3] for i in range(max(0, len(squashed) - 2))}
-
-    first, second = grams(a), grams(b)
-    if not first or not second:
-        return 0.0
-    return len(first & second) / min(len(first), len(second))
-
-
 def _system_prompt(base: str) -> str:
     """Base prompt plus whatever the user has written about themselves."""
     profile = load_profile()
@@ -550,36 +534,44 @@ class Source:
     chunks: int = 0
     error: str = ""
     floor: float = field(default_factory=lambda: config.AUDIO_SILENCE_RMS)
-    # The partial chunk still filling. Held here rather than as a local in the
-    # capture thread so the button can cut it short — the words you just heard
-    # live in this buffer and nowhere else.
-    buf: list = field(default_factory=list)
+    # Everything captured since the last press, waiting to be transcribed.
+    #
+    # Nothing is transcribed in the background any more. Chunking was measurably
+    # destructive: the same 20s of speech scored 0.992 against ground truth as
+    # one pass, 0.977 split in two, and 0.844 split in four. Every boundary falls
+    # mid-word and costs accuracy — "cái ví dụ HTML" becomes "cái ví TML".
+    #
+    # So the audio simply accumulates, and a press transcribes the lot in one
+    # go. Latency scales sub-linearly (16s->1.0s, 64s->2.5s, 96s->3.9s), so this
+    # is affordable, and it costs one call per press instead of a few hundred
+    # per meeting.
+    buf: deque = field(default_factory=deque)
     buf_frames: int = 0
     buf_lock: threading.Lock = field(default_factory=threading.Lock)
-    # A rolling window of the last FLUSH_LOOKBACK_SECONDS, kept regardless of
-    # where chunk boundaries fell. This is what the button transcribes, so a
-    # question split across a boundary is still one coherent clip.
-    lookback: deque = field(default_factory=deque)
-    lookback_frames: int = 0
 
-    def remember(self, block) -> None:
-        """Keep `block` in the rolling window, evicting whatever aged out."""
-        self.lookback.append(block)
-        self.lookback_frames += len(block)
-        limit = int(config.FLUSH_LOOKBACK_SECONDS * self.samplerate)
-        while self.lookback and self.lookback_frames > limit:
-            self.lookback_frames -= len(self.lookback.popleft())
+    def add(self, block) -> None:
+        """Buffer a block, discarding whatever has aged past the cap.
 
-    def recent_audio(self, minimum_seconds: float = 0.0):
-        """The rolling window as one array, or None if too short to be worth a call."""
+        The cap bounds how long a press can take: without it, an hour of silence
+        followed by one press would try to transcribe an hour.
+        """
+        self.buf.append(block)
+        self.buf_frames += len(block)
+        limit = int(config.AUDIO_BUFFER_MAX_SECONDS * self.samplerate)
+        while self.buf and self.buf_frames > limit:
+            self.buf_frames -= len(self.buf.popleft())
+
+    def drain(self, minimum_seconds: float = 0.0):
+        """Take everything buffered and clear it, or None if too little to bother."""
         import numpy as _np
 
         with self.buf_lock:
-            if self.lookback_frames < minimum_seconds * self.samplerate:
+            if self.buf_frames < minimum_seconds * self.samplerate or not self.buf:
                 return None
-            if not self.lookback:
-                return None
-            return _np.concatenate(list(self.lookback))
+            audio = _np.concatenate(list(self.buf))
+            self.buf.clear()
+            self.buf_frames = 0
+            return audio
 
     @property
     def alive(self) -> bool:
@@ -611,14 +603,8 @@ class AudioLoop:
         self._transcript: deque[tuple[float, str, str]] = deque()
         # Bounded on purpose: if transcription falls behind, drop the oldest
         # audio rather than grow a backlog that answers questions from minutes ago.
-        self._work: "queue.Queue" = queue.Queue(maxsize=6)
-        self._worker: threading.Thread | None = None
         self.chunks_transcribed = 0
         self.chunks_processed = 0
-        # The press-time transcription of the rolling window. Held apart from the
-        # transcript because it overlaps it by design.
-        self._tail: tuple = ()
-        self._tail_at = 0.0
         # Questions already answered, with what was said. This is what lets the
         # focus window stay wide: earlier questions are marked as dealt with
         # rather than hidden, so a follow-up keeps the context it needs without
@@ -629,8 +615,6 @@ class AudioLoop:
     # --- lifecycle ----------------------------------------------------------
 
     def start(self) -> None:
-        self._worker = threading.Thread(target=self._transcribe_worker, daemon=True)
-        self._worker.start()
         for source in self.sources:
             source.thread = threading.Thread(
                 target=self._capture, args=(source,), daemon=True,
@@ -729,29 +713,8 @@ class AudioLoop:
         old_cut = now - config.ANSWER_CONTEXT_SECONDS
         focus_cut = now - config.ANSWER_FOCUS_SECONDS
 
-        # The press-time clip is the newest audio, so it goes last — but it does
-        # NOT get to overwrite the transcript. It re-transcribes a long window in
-        # one go and is measurably worse on names: a chunk rendered
-        # "シナリオCとシナリオD" correctly while the same speech in the flush came
-        # back "シナリオシート、シナリオリー", and letting the flush win meant
-        # answering the garbled version.
-        tail = self._tail_text() if (now - self._tail_at) < 20 else ""
-        if tail:
-            with self._lock:
-                rows = [(s, l, t) for s, l, t in self._transcript if s >= old_cut]
-            # Drop only the rows the clip genuinely restates, not everything in
-            # the window. Otherwise a good transcription is thrown away for a
-            # worse one covering the same seconds.
-            kept = [(s, l, t) for s, l, t in rows if _overlap(t, tail) < 0.6]
-            focus_rows = [(s, l, t) for s, l, t in kept if s >= focus_cut]
-            background = "\n".join(f"{l}: {t}" for s, l, t in kept if s < focus_cut)
-            focus = "\n".join(f"{l}: {t}" for _s, l, t in focus_rows)
-            # Flagged, not trusted blindly. The clip is newest but transcribed in
-            # one long pass, which mangles names and letters that the shorter
-            # chunks got right.
-            marked = f"[rough re-transcription of the last few seconds] {tail}"
-            return background, f"{focus}\n{marked}".strip() if focus else marked
-
+        # No tail to reconcile any more: every line here was written by a press,
+        # so the newest lines ARE what was just said.
         with self._lock:
             rows = [(stamp, label, text) for stamp, label, text in self._transcript
                     if stamp >= old_cut]
@@ -772,17 +735,16 @@ class AudioLoop:
         with self._lock:
             return bool(self._transcript)
 
-    def flush_and_wait(self, timeout: float = 6.0) -> bool:
-        """Transcribe the last few seconds right now, as one clip.
+    def flush_and_wait(self, timeout: float = 12.0) -> bool:
+        """Transcribe everything captured since the last press, and keep it.
 
-        This is the only way to answer a question you have *just* heard. Chunks
-        fill on a fixed cadence, so at the instant you press, the question exists
-        only as raw samples. Nothing computed in the background can reach them.
+        The only transcription that happens at all. Each source's buffer is
+        drained and sent as one clip, which is what makes it accurate: chunking
+        the same speech scored 0.844 against ground truth where one pass scored
+        0.992, because every boundary lands mid-word.
 
-        It re-transcribes the rolling window rather than only the unsent
-        remainder, because chunk boundaries fall mid-sentence and short fragments
-        hallucinate. The result is kept separate from the background transcript —
-        it deliberately overlaps it, and appending would double every line.
+        The result is appended to the transcript rather than held aside. There is
+        nothing to overlap with any more — this IS the transcript.
 
         Returns True if it produced anything.
         """
@@ -790,37 +752,35 @@ class AudioLoop:
         for source in self.sources:
             if not source.alive:
                 continue
-            audio = source.recent_audio(config.FLUSH_MIN_SECONDS)
+            audio = source.drain(config.FLUSH_MIN_SECONDS)
             if audio is None:
                 continue
             if float(np.sqrt(np.mean(np.square(audio)))) < source.floor:
-                continue  # the window is silence; nothing was said
+                continue  # nobody spoke; transcribing silence invents text
             jobs.append((source, audio))
         if not jobs:
-            self._tail = ()
             return False
 
-        # Straight to the API, not through the work queue: the queue is behind
-        # whatever the background cadence is doing, and this press is waiting.
-        lines = []
+        got = False
         deadline = time.monotonic() + timeout
         for source, audio in jobs:
             if time.monotonic() > deadline:
                 break
+            seconds = len(audio) / max(1, source.samplerate)
             text = self._transcribe(audio, source.samplerate, source.label)
-            if text:
-                lines.append((source.label, text))
-        self._tail = tuple(lines)
-        if lines:
-            self._tail_at = time.monotonic()
-            for label, text in lines:
-                self._on_event(f"just said [{label}]: {text[:70]}")
-        return bool(lines)
-
-    def _tail_text(self) -> str:
-        if not self._tail:
-            return ""
-        return "\n".join(f"{label}: {text}" for label, text in self._tail)
+            source.chunks += 1
+            if not text:
+                continue
+            now = time.monotonic()
+            with self._lock:
+                self._transcript.append((now, source.label, text))
+                cutoff = now - config.TRANSCRIPT_WINDOW_MINUTES * 60
+                while self._transcript and self._transcript[0][0] < cutoff:
+                    self._transcript.popleft()
+            self.chunks_transcribed += 1
+            got = True
+            self._on_event(f"heard [{source.label}] ({seconds:.0f}s): {text[:70]}")
+        return got
 
     def answer_now(self) -> str:
         """Answer live from the transcript, for a press we did not see coming.
@@ -930,17 +890,14 @@ class AudioLoop:
         source.device = f"[{index}] {name}"
         source.api = api
         source.samplerate = int(stream.samplerate)
-        min_frames = int(source.samplerate * config.AUDIO_CHUNK_MIN_SECONDS)
-        max_frames = int(source.samplerate * config.AUDIO_CHUNK_MAX_SECONDS)
-        pause_frames = int(source.samplerate * config.AUDIO_PAUSE_SECONDS)
-        quiet_frames = 0
-
         try:
             self._on_event(
                 f"audio [{source.label}] listening — {source.device} via {api}, "
-                f"{source.samplerate}Hz, cutting at pauses "
-                f"({config.AUDIO_CHUNK_MIN_SECONDS:.0f}-{config.AUDIO_CHUNK_MAX_SECONDS:.0f}s)"
+                f"{source.samplerate}Hz, buffering until you press "
+                f"(max {config.AUDIO_BUFFER_MAX_SECONDS:.0f}s)"
             )
+            # Buffer only. Nothing is transcribed until a button press, so this
+            # loop makes no network calls at all.
             while not self._halt.is_set():
                 try:
                     block = blocks.get(timeout=0.5)
@@ -949,28 +906,8 @@ class AudioLoop:
                 source.frames += len(block)
                 block_rms = float(np.sqrt(np.mean(np.square(block))))
                 source.level = max(source.level * 0.85, block_rms)
-                # Track how long it has been quiet, so a chunk can end where the
-                # speaker did rather than wherever the clock happened to land.
-                if block_rms < source.floor:
-                    quiet_frames += len(block)
-                else:
-                    quiet_frames = 0
-
-                ready = None
                 with source.buf_lock:
-                    source.remember(block)
-                    source.buf.append(block)
-                    source.buf_frames += len(block)
-                    at_pause = (
-                        source.buf_frames >= min_frames and quiet_frames >= pause_frames
-                    )
-                    if at_pause or source.buf_frames >= max_frames:
-                        ready = np.concatenate(source.buf)
-                        source.buf = []
-                        source.buf_frames = 0
-                if ready is not None:
-                    quiet_frames = 0
-                    self._submit(source, ready)
+                    source.add(block)
         except Exception as exc:
             source.error = f"capture stopped: {exc}"
             self._on_event(f"audio [{source.label}] error: {exc}")
@@ -987,42 +924,7 @@ class AudioLoop:
                     "captured while speaking"
                 )
 
-    def _submit(self, source: Source, chunk: np.ndarray) -> bool:
-        source.chunks += 1
-        rms = float(np.sqrt(np.mean(np.square(chunk))))
-        if rms < source.floor:
-            return False  # nothing said, no call, no cost, no invented transcript
-        try:
-            self._work.put_nowait((source.label, chunk, source.samplerate))
-            return True
-        except queue.Full:
-            self._on_event(f"audio [{source.label}] behind — dropped a chunk")
-            return False
-
     # --- transcription -----------------------------------------------------
-
-    def _transcribe_worker(self) -> None:
-        while not self._halt.is_set():
-            try:
-                item = self._work.get(timeout=0.5)
-            except queue.Empty:
-                continue
-            if item is None:
-                return
-            label, chunk, samplerate = item
-            text = self._transcribe(chunk, samplerate, label)
-            if not text:
-                self.chunks_processed += 1
-                continue
-            now = time.monotonic()
-            with self._lock:
-                self._transcript.append((now, label, text))
-                cutoff = now - config.TRANSCRIPT_WINDOW_MINUTES * 60
-                while self._transcript and self._transcript[0][0] < cutoff:
-                    self._transcript.popleft()
-            self.chunks_transcribed += 1
-            self.chunks_processed += 1
-            self._on_event(f"heard [{label}]: {text[:70]}")
 
     def _to_wav(self, chunk: np.ndarray, samplerate: int) -> io.BytesIO:
         import soundfile as sf

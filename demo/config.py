@@ -66,35 +66,18 @@ AUDIO_DEVICE = os.getenv("AUDIO_DEVICE", "Stereo Mix").strip()
 # Blank means the system default recording device.
 MIC_ENABLED = os.getenv("MIC_ENABLED", "1").strip() == "1"
 MIC_DEVICE = os.getenv("MIC_DEVICE", "").strip()
-# Time-to-transcript, and the single biggest lever on whether the button is
-# useful. At 20s you hear a question, press, and the words are still sitting in
-# a half-full buffer — so the bot answers something older. Short chunks cost
-# more transcription calls (they are cheap) and buy a button that knows about
-# the thing you just heard.
-# Chunks are cut at a PAUSE, not on the timer, whenever one is available.
+# NOTHING is transcribed in the background. Audio accumulates and a button press
+# transcribes the lot in one pass.
 #
-# A fixed cadence slices speech mid-word, and half a word transcribes as a
-# different word: "cái ví dụ HTML" came back "cái ví TML", "cái thang" became
-# "cái thằng". Both halves are then wrong, in both chunks. Waiting for ~0.4s of
-# quiet means a chunk usually holds whole utterances, which is what the model is
-# good at.
+# Measured: the same 20s of speech scored 0.992 against ground truth as a single
+# pass, 0.977 split in two, 0.844 split in four. Every chunk boundary lands
+# mid-word and costs accuracy — "cái ví dụ HTML" became "cái ví TML". Latency
+# scales sub-linearly (16s->1.0s, 64s->2.5s, 96s->3.9s), so one long pass is
+# affordable, and it costs one call per press instead of hundreds per meeting.
 #
-# Never cut shorter than MIN (a scrap of audio hallucinates) and never wait past
-# MAX (someone talking without pause must still reach the transcript).
-AUDIO_CHUNK_MIN_SECONDS = 3.0
-AUDIO_CHUNK_MAX_SECONDS = 14.0
-AUDIO_PAUSE_SECONDS = 0.4
-# On a button press, transcribe the last this-many seconds as ONE clip.
-#
-# Not just the half-full chunk: chunk boundaries fall wherever the cadence puts
-# them, so a four-second question routinely lands as two fragments, and short
-# fragments do not transcribe — they hallucinate ("Хит-парад" on a clean
-# recording of an English sentence). A single clip spanning the whole question
-# is both fresher and far more accurate, and it costs one call.
-# 14s was too long: one pass over that much speech garbles names and letters the
-# 7s chunks got right ("シナリオC と D" came back "シナリオシート、シナリオリー").
-# 10s still spans a question split across a chunk boundary, which is the point.
-FLUSH_LOOKBACK_SECONDS = 10.0
+# This caps how much audio a single press can transcribe. Without it, an hour of
+# talking with no press would try to send an hour.
+AUDIO_BUFFER_MAX_SECONDS = 120.0
 # Below this much buffered audio there is nothing worth a call.
 FLUSH_MIN_SECONDS = 0.7
 # Mean RMS (float32, 0-1) below which a chunk counts as silence and is dropped

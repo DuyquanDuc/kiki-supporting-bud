@@ -221,8 +221,17 @@ A question gets answered and nothing else — no preamble, no recap. If nobody h
 asked anything, it catches you up instead: what is being discussed and where it
 stands, leading with whatever the room is waiting on you for.
 
-Pressing transcribes the last 14 seconds first, so a question you *just* heard is
-included rather than waiting for the chunk cadence to catch up.
+Pressing transcribes everything captured since your last press, in a single
+pass. Nothing is transcribed in the background, so a question you *just* heard
+is always included.
+
+**Why one pass and not chunks.** Measured against known ground truth, the same
+20s of speech scored **0.992** transcribed whole, **0.977** split in two, and
+**0.844** split in four. Every boundary lands mid-word and both halves come back
+wrong — that is what turned "cái ví dụ HTML" into "cái ví TML". Latency barely
+grows with length (16s → 1.0s, 64s → 2.5s, 96s → 3.9s), so the long pass is both
+more accurate and affordable, at one call per press instead of hundreds per
+meeting.
 
 | Case | Latency |
 |---|---|
