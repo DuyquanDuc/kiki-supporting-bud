@@ -31,6 +31,22 @@ TTS_VOICE = os.getenv("TTS_VOICE", "alloy").strip()
 TRANSCRIBE_MODEL = os.getenv("TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe").strip()
 # Text-only reasoning over transcript + screen state. Same model as vision by
 # default; there is no reason it has to be.
+#
+# Smaller models were measured on this project's real cases and are NOT worth it.
+# Median latency, then what broke:
+#
+#   gpt-5.6-luna  1549ms  all four cases correct
+#   gpt-4.1-nano  1103ms  invented a commitment nobody made
+#                         (「山口さんと西谷は今週末までに仕様を仕上げる予定」),
+#                         answered a Vietnamese question in English, and merged
+#                         four stacked questions into one reply
+#   gpt-5.4-nano  1732ms  SLOWER than luna, awkward Japanese
+#   gpt-5.4-mini  2059ms  slower, leaked English into JA/VI answers
+#   gpt-5-nano    5418ms  far slower
+#
+# The 450ms nano saves buys hallucinated facts in a client meeting. Latency here
+# is dominated by server-side variance (744-4767ms on identical calls), which no
+# model choice fixes.
 ANSWER_MODEL = os.getenv("ANSWER_MODEL", VISION_MODEL).strip()
 
 # --- Screen loop -----------------------------------------------------------
