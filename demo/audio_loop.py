@@ -614,6 +614,7 @@ class AudioLoop:
         # rather than hidden, so a follow-up keeps the context it needs without
         # the answer folding the old questions back in.
         self._flush_lock = threading.Lock()
+        self._no_effort = False
         self._history: deque[tuple[str, str]] = deque(maxlen=config.ANSWER_HISTORY)
         self._last_query = ""
 
@@ -1086,6 +1087,31 @@ class AudioLoop:
         except Exception as exc:
             self._fail_global(f"answer failed: {exc}")
             return ""
+
+    def _answer_call(self, messages):
+        """Chat call with reasoning effort, falling back if the model rejects it.
+
+        Worth the retry: effort is a per-press saving on the slowest step, but
+        the setting is model-specific and a hard failure here means no answer at
+        all. Once rejected it is not tried again.
+        """
+        if config.ANSWER_EFFORT and not self._no_effort:
+            try:
+                return self._client.chat.completions.create(
+                    model=config.ANSWER_MODEL, messages=messages,
+                    reasoning_effort=config.ANSWER_EFFORT,
+                )
+            except Exception as exc:
+                if "reasoning" not in str(exc).lower():
+                    raise
+                self._no_effort = True
+                self._on_event(
+                    f"answer model rejects reasoning_effort={config.ANSWER_EFFORT!r}; "
+                    "using the default"
+                )
+        return self._client.chat.completions.create(
+            model=config.ANSWER_MODEL, messages=messages
+        )
 
     def _fail_global(self, message: str) -> None:
         """A fault that is not any one source's fault (API, network)."""

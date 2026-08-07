@@ -101,7 +101,11 @@ AUDIO_BUFFER_MAX_SECONDS = 45.0
 # transcribe whatever has accumulated since the last sweep, usually well under
 # 40s. It also restores a transcript that fills in as the meeting goes, instead
 # of only when you ask.
-BACKGROUND_TRANSCRIBE_SECONDS = 40.0
+BACKGROUND_TRANSCRIBE_SECONDS = 20.0
+# Reasoning effort for the answer call. Measured 1621ms at "low" against 1965ms
+# at default on the same question — small, but it is spent on every press.
+# "minimal" is rejected by this model. Sent only if the model accepts it.
+ANSWER_EFFORT = os.getenv("ANSWER_EFFORT", "low").strip()
 # Below this much buffered audio there is nothing worth a call.
 FLUSH_MIN_SECONDS = 0.7
 # Mean RMS (float32, 0-1) below which a chunk counts as silence and is dropped
