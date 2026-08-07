@@ -71,7 +71,19 @@ MIC_DEVICE = os.getenv("MIC_DEVICE", "").strip()
 # a half-full buffer — so the bot answers something older. Short chunks cost
 # more transcription calls (they are cheap) and buy a button that knows about
 # the thing you just heard.
-AUDIO_CHUNK_SECONDS = 7
+# Chunks are cut at a PAUSE, not on the timer, whenever one is available.
+#
+# A fixed cadence slices speech mid-word, and half a word transcribes as a
+# different word: "cái ví dụ HTML" came back "cái ví TML", "cái thang" became
+# "cái thằng". Both halves are then wrong, in both chunks. Waiting for ~0.4s of
+# quiet means a chunk usually holds whole utterances, which is what the model is
+# good at.
+#
+# Never cut shorter than MIN (a scrap of audio hallucinates) and never wait past
+# MAX (someone talking without pause must still reach the transcript).
+AUDIO_CHUNK_MIN_SECONDS = 3.0
+AUDIO_CHUNK_MAX_SECONDS = 14.0
+AUDIO_PAUSE_SECONDS = 0.4
 # On a button press, transcribe the last this-many seconds as ONE clip.
 #
 # Not just the half-full chunk: chunk boundaries fall wherever the cadence puts

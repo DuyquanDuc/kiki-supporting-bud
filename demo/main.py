@@ -169,8 +169,8 @@ class Trigger:
             else:
                 self._emit(
                     "Nothing transcribed yet",
-                    f"Hearing audio (level {self._audio.level:.4f}) but no chunk is "
-                    f"ready — they complete every {config.AUDIO_CHUNK_SECONDS}s.",
+                    f"Hearing audio (level {self._audio.level:.4f}) but nothing "
+                    f"transcribed yet — chunks close at a pause in speech.",
                     "listening", False,
                     spoken="Nothing transcribed yet.",
                 )

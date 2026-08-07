@@ -930,12 +930,16 @@ class AudioLoop:
         source.device = f"[{index}] {name}"
         source.api = api
         source.samplerate = int(stream.samplerate)
-        chunk_frames = int(source.samplerate * config.AUDIO_CHUNK_SECONDS)
+        min_frames = int(source.samplerate * config.AUDIO_CHUNK_MIN_SECONDS)
+        max_frames = int(source.samplerate * config.AUDIO_CHUNK_MAX_SECONDS)
+        pause_frames = int(source.samplerate * config.AUDIO_PAUSE_SECONDS)
+        quiet_frames = 0
 
         try:
             self._on_event(
                 f"audio [{source.label}] listening — {source.device} via {api}, "
-                f"{source.samplerate}Hz, {config.AUDIO_CHUNK_SECONDS}s chunks"
+                f"{source.samplerate}Hz, cutting at pauses "
+                f"({config.AUDIO_CHUNK_MIN_SECONDS:.0f}-{config.AUDIO_CHUNK_MAX_SECONDS:.0f}s)"
             )
             while not self._halt.is_set():
                 try:
@@ -945,16 +949,27 @@ class AudioLoop:
                 source.frames += len(block)
                 block_rms = float(np.sqrt(np.mean(np.square(block))))
                 source.level = max(source.level * 0.85, block_rms)
+                # Track how long it has been quiet, so a chunk can end where the
+                # speaker did rather than wherever the clock happened to land.
+                if block_rms < source.floor:
+                    quiet_frames += len(block)
+                else:
+                    quiet_frames = 0
+
                 ready = None
                 with source.buf_lock:
                     source.remember(block)
                     source.buf.append(block)
                     source.buf_frames += len(block)
-                    if source.buf_frames >= chunk_frames:
+                    at_pause = (
+                        source.buf_frames >= min_frames and quiet_frames >= pause_frames
+                    )
+                    if at_pause or source.buf_frames >= max_frames:
                         ready = np.concatenate(source.buf)
                         source.buf = []
                         source.buf_frames = 0
                 if ready is not None:
+                    quiet_frames = 0
                     self._submit(source, ready)
         except Exception as exc:
             source.error = f"capture stopped: {exc}"
