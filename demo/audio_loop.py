@@ -205,6 +205,22 @@ def list_input_devices() -> list[tuple[int, str, int]]:
     return devices
 
 
+def loopback_target() -> str:
+    """Name of the speaker WASAPI loopback would capture, or "" if unavailable.
+
+    Checked rather than assumed: soundcard is an optional dependency and the
+    call fails on a machine with no active render endpoint.
+    """
+    try:
+        import soundcard
+
+        speaker = soundcard.default_speaker()
+        soundcard.get_microphone(id=str(speaker.name), include_loopback=True)
+        return str(speaker.name)
+    except Exception:
+        return ""
+
+
 def default_input_name() -> str:
     """Name of the system default recording device, for when none is configured."""
     try:
@@ -388,6 +404,9 @@ class Source:
     label: str
     candidates: list[tuple[int, str, str]]
     thread: threading.Thread | None = None
+    # "loopback" captures whatever the default speaker is playing, whatever
+    # device that is. "device" opens one named input by index.
+    backend: str = "device"
     device: str = ""
     api: str = ""
     samplerate: int = 48_000
@@ -450,11 +469,18 @@ class AudioLoop:
 
     def __init__(self, client, sources, is_muted=None, on_event=None):
         self._client = client
-        self.sources = [
-            Source(label, candidates if not isinstance(candidates, int)
-                   else [(candidates, f"device {candidates}", "pinned")])
-            for label, candidates in sources
-        ]
+        self.sources = []
+        for label, spec in sources:
+            # "loopback" means capture the default speaker's render endpoint,
+            # so there is no device index to resolve.
+            if spec == "loopback":
+                self.sources.append(Source(label, [], backend="loopback"))
+            elif isinstance(spec, int):
+                self.sources.append(
+                    Source(label, [(spec, f"device {spec}", "pinned")])
+                )
+            else:
+                self.sources.append(Source(label, spec))
         # A callable, not a value: it changes constantly and the loop must read
         # it at the moment it needs it, not at construction.
         self._is_muted = is_muted or (lambda: False)
@@ -794,7 +820,90 @@ class AudioLoop:
 
     # --- capture ------------------------------------------------------------
 
+    def _capture_loopback(self, source: Source) -> None:
+        """Capture whatever the default speaker is playing, via WASAPI loopback.
+
+        This is what makes Bluetooth and wired headphones work. Stereo Mix is a
+        capture pin on the Realtek codec, so it only hears what Realtek renders —
+        route audio to a Bluetooth headset and Realtek renders nothing, so Stereo
+        Mix records silence while the meeting plays perfectly. WASAPI loopback
+        attaches to the render endpoint itself, whichever device that is.
+
+        It also sidesteps every Stereo Mix failure this project has hit: disabled
+        by default, enumerated-but-dead, and WDM-KS pins left locked by a killed
+        process.
+        """
+        try:
+            import soundcard
+        except Exception as exc:
+            source.error = f"soundcard unavailable: {exc}"
+            return
+
+        # WASAPI is COM, and COM is per-thread. Without this the capture thread
+        # fails with CO_E_NOTINITIALIZED (0x800401f0) while the identical code
+        # works from the main thread, where something else already initialised
+        # it. S_FALSE means "already initialised on this thread", which is fine.
+        try:
+            import ctypes
+
+            ctypes.windll.ole32.CoInitializeEx(None, 0)  # COINIT_MULTITHREADED
+        except Exception:
+            pass
+
+        try:
+            speaker = soundcard.default_speaker()
+            microphone = soundcard.get_microphone(id=str(speaker.name),
+                                                  include_loopback=True)
+        except Exception as exc:
+            source.error = f"no loopback for the default speaker: {exc}"
+            self._on_event(f"audio [{source.label}] {source.error}")
+            return
+
+        source.samplerate = 48_000
+        source.device = f"loopback of {speaker.name}"
+        source.api = "WASAPI loopback"
+        block = 2048
+        sweep = config.BACKGROUND_TRANSCRIBE_SECONDS
+        cadence = (f"sweeping every {sweep:.0f}s" if sweep > 0
+                   else "transcribing only on press")
+        muted_frames = 0
+        try:
+            with microphone.recorder(samplerate=source.samplerate, channels=1,
+                                     blocksize=block) as recorder:
+                self._on_event(
+                    f"audio [{source.label}] listening — {source.device} "
+                    f"via WASAPI loopback, {source.samplerate}Hz, {cadence} "
+                    f"(buffer max {config.AUDIO_BUFFER_MAX_SECONDS:.0f}s)"
+                )
+                while not self._halt.is_set():
+                    data = recorder.record(numframes=block)
+                    if data is None or len(data) == 0:
+                        continue
+                    mono = data.mean(axis=1) if data.ndim > 1 else data
+                    mono = mono.astype(np.float32)
+                    if self._is_muted():
+                        muted_frames += len(mono)
+                        continue
+                    source.frames += len(mono)
+                    block_rms = float(np.sqrt(np.mean(np.square(mono))))
+                    source.level = max(source.level * 0.85, block_rms)
+                    with source.buf_lock:
+                        source.add(mono)
+        except Exception as exc:
+            source.error = f"loopback capture stopped: {exc}"
+            self._on_event(f"audio [{source.label}] error: {exc}")
+        finally:
+            if muted_frames:
+                self._on_event(
+                    f"audio [{source.label}] discarded "
+                    f"{muted_frames / max(1, source.samplerate):.0f}s "
+                    "captured while speaking"
+                )
+
     def _capture(self, source: Source) -> None:
+        if source.backend == "loopback":
+            self._capture_loopback(source)
+            return
         # PortAudio's WDM-KS backend rejects blocking reads outright ("Blocking
         # API not supported yet"), so callback mode is the only way in.
         blocks: "queue.Queue[np.ndarray]" = queue.Queue()

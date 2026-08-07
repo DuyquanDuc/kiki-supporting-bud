@@ -385,12 +385,28 @@ def main() -> None:
     audio = None
     if config.AUDIO_ENABLED and not args.offline and client is not None:
         sources = []
-        loopback = audio_loop_mod.input_candidates(config.AUDIO_DEVICE)
-        if loopback:
-            sources.append((audio_loop_mod.THEM, loopback))
+        # WASAPI loopback follows whatever you are listening on, so it survives
+        # Bluetooth and headphones. Stereo Mix only hears the Realtek codec.
+        # NOT `speaker` — that name already holds the TTS Speaker, and
+        # shadowing it here crashed startup with a very unhelpful AttributeError.
+        render_device = ""
+        if config.LOOPBACK_MODE in ("auto", "loopback"):
+            render_device = audio_loop_mod.loopback_target()
+        if render_device:
+            sources.append((audio_loop_mod.THEM, "loopback"))
+            log(f"hearing the call via WASAPI loopback of {render_device}")
+        elif config.LOOPBACK_MODE == "loopback":
+            log("WARNING: LOOPBACK_MODE=loopback but no loopback is available")
+            log("         install soundcard, or set LOOPBACK_MODE=device")
         else:
-            log(f"WARNING: no loopback device matching {config.AUDIO_DEVICE!r}")
-            log("         the bot will not hear the other people in the call")
+            candidates = audio_loop_mod.input_candidates(config.AUDIO_DEVICE)
+            if candidates:
+                sources.append((audio_loop_mod.THEM, candidates))
+                log(f"hearing the call via {config.AUDIO_DEVICE} "
+                    "(no WASAPI loopback — headphones may capture nothing)")
+            else:
+                log(f"WARNING: no loopback device matching {config.AUDIO_DEVICE!r}")
+                log("         the bot will not hear the other people in the call")
 
         if config.MIC_ENABLED:
             wanted = config.MIC_DEVICE or audio_loop_mod.default_input_name()

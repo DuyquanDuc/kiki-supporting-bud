@@ -88,6 +88,19 @@ AUDIO_ENABLED = os.getenv("AUDIO_ENABLED", "1").strip() == "1"
 # sounddevice 0.5.x exposes no WASAPI loopback flag, so this is the route on
 # Windows. Enable it in Sound > Recording if it does not show up.
 AUDIO_DEVICE = os.getenv("AUDIO_DEVICE", "Stereo Mix").strip()
+# How to capture what the other people are saying:
+#   auto       WASAPI loopback of the default speaker if available, else
+#              AUDIO_DEVICE above. This is the default.
+#   loopback   force WASAPI loopback
+#   device     force AUDIO_DEVICE (Stereo Mix)
+#
+# WASAPI loopback attaches to the RENDER ENDPOINT, so it follows whatever you
+# are actually listening on — including Bluetooth and wired headphones. Stereo
+# Mix is a capture pin on the Realtek codec and only hears what Realtek renders,
+# so routing audio to a Bluetooth headset makes it record silence while the
+# meeting plays perfectly. It also avoids every Stereo Mix failure this project
+# has hit: disabled by default, enumerated-but-dead, WDM-KS pins left locked.
+LOOPBACK_MODE = os.getenv("LOOPBACK_MODE", "auto").strip().lower()
 # Your microphone, captured alongside the loopback and merged into the same
 # transcript tagged "You". Without it the bot hears the meeting talk *at* you and
 # never hears you answer, which is half the conversation it is meant to help with.

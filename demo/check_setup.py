@@ -154,6 +154,23 @@ def check_audio_in() -> None:
     if not config.AUDIO_ENABLED:
         line(WARN, "AUDIO_ENABLED=0 — the bot will not listen to the meeting")
         return
+
+    # WASAPI loopback captures the render endpoint, so it follows whatever you
+    # are actually listening on. Stereo Mix is a pin on the onboard codec and
+    # hears nothing once audio goes to a headset.
+    if config.LOOPBACK_MODE in ("auto", "loopback"):
+        speaker = audio_loop.loopback_target()
+        if speaker:
+            line(OK, f"WASAPI loopback of {speaker}")
+            line(OK, "   follows your output device — Bluetooth and wired")
+            line(OK, "   headphones work, and Stereo Mix is not needed")
+            return
+        if config.LOOPBACK_MODE == "loopback":
+            line(BAD, "LOOPBACK_MODE=loopback but no loopback is available")
+            line(WARN, "   pip install soundcard, or set LOOPBACK_MODE=device")
+            return
+        line(WARN, "no WASAPI loopback (pip install soundcard) — using Stereo Mix,")
+        line(WARN, "   which captures nothing if you listen on headphones")
     devices = audio_loop.list_input_devices()
     if not devices:
         line(BAD, "no input devices found — the bot cannot hear the meeting")

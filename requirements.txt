@@ -9,3 +9,7 @@ soundfile>=0.12.1
 # Optional: Windows local TTS. Without it, speech falls back to the API
 # everywhere, which works but costs ~1750ms more before you hear anything.
 pywin32>=306; sys_platform == "win32"
+# Optional: WASAPI loopback capture, so the bot hears the call through
+# Bluetooth or wired headphones. Without it, capture falls back to
+# Stereo Mix, which only hears the onboard codec.
+soundcard>=0.4.2; sys_platform == "win32"
