@@ -329,6 +329,20 @@ def main() -> None:
 
     client = build_client(args.offline)
 
+    if client is not None:
+        # Open the HTTPS connection now, on a thread, so the first press does
+        # not pay for TLS and DNS. Measured: a first press costs ~1950-2400ms
+        # cold against ~900ms once the connection exists, and a real session
+        # logged its first press at 10.6s. Nothing waits on this — if it is slow
+        # or fails, the first press simply pays what it would have anyway.
+        def warm() -> None:
+            try:
+                client.models.retrieve(config.ANSWER_MODEL)
+            except Exception:
+                pass
+
+        threading.Thread(target=warm, daemon=True).start()
+
     if config.HIDE_FROM_CAPTURE:
         from . import privacy
 
