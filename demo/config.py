@@ -79,7 +79,10 @@ AUDIO_CHUNK_SECONDS = 7
 # fragments do not transcribe — they hallucinate ("Хит-парад" on a clean
 # recording of an English sentence). A single clip spanning the whole question
 # is both fresher and far more accurate, and it costs one call.
-FLUSH_LOOKBACK_SECONDS = 14.0
+# 14s was too long: one pass over that much speech garbles names and letters the
+# 7s chunks got right ("シナリオC と D" came back "シナリオシート、シナリオリー").
+# 10s still spans a question split across a chunk boundary, which is the point.
+FLUSH_LOOKBACK_SECONDS = 10.0
 # Below this much buffered audio there is nothing worth a call.
 FLUSH_MIN_SECONDS = 0.7
 # Mean RMS (float32, 0-1) below which a chunk counts as silence and is dropped
@@ -94,7 +97,12 @@ ANSWER_CONTEXT_SECONDS = 180
 # ...of which this much is the part that actually gets answered. Everything
 # older is passed as background only. Without this split the model reads three
 # minutes of chatter and summarises it instead of answering the last thing said.
-ANSWER_FOCUS_SECONDS = 45
+#
+# Kept short on purpose. At 45s a run of quick questions — "totals for A and B?"
+# then "and C and D?" — all sat inside the window at once, and the answer merged
+# them into "A and B, ABCD and the earlier breakdown are all unavailable"
+# instead of answering the one just asked.
+ANSWER_FOCUS_SECONDS = 18
 # A pre-computed answer older than this is stale — the meeting has moved on, so
 # the button answers live instead of replaying a dead question.
 PENDING_ANSWER_TTL = 45

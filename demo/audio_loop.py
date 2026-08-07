@@ -219,6 +219,23 @@ said. You cannot see their screen.
 Your first job is to ANSWER THE MOST RECENT QUESTION. When there is a question,
 answer it and nothing else — do not also summarise, do not set the scene.
 
+ONLY THE LAST ONE. JUST SAID may contain several questions in a row, because
+people ask "and the totals for A and B?" then "and C and D?" seconds apart. The
+earlier ones have already been answered and are there for context. Answer the
+FINAL question only. Never roll them together into one reply covering all of
+them — that answers a question nobody asked and buries the one they did.
+
+The same words may appear more than once: speech is transcribed in overlapping
+passes, so a repeated line is one utterance heard twice, not someone asking
+twice. Treat it as one.
+
+A line marked [rough re-transcription of the last few seconds] is the newest
+audio, but it was transcribed in one long pass and garbles names, letters and
+identifiers that the shorter passes got right. When it and an ordinary line
+clearly describe the same utterance, take the wording from the ordinary line —
+"シナリオCとシナリオD" over "シナリオシート、シナリオリー", "ETL" over "ETR".
+Use the rough line for what is new in it, not for how it spells things.
+
 - Lead with the answer itself. First words are the substance.
 - Never restate or paraphrase the question. They just heard it.
 - Never recap, summarise, or describe the conversation. They were in it.
@@ -751,17 +768,28 @@ class AudioLoop:
         old_cut = now - config.ANSWER_CONTEXT_SECONDS
         focus_cut = now - config.ANSWER_FOCUS_SECONDS
 
-        # A fresh press-time clip wins outright: it is the newest audio and, being
-        # one unbroken clip, the most accurate rendering of the actual question.
+        # The press-time clip is the newest audio, so it goes last — but it does
+        # NOT get to overwrite the transcript. It re-transcribes a long window in
+        # one go and is measurably worse on names: a chunk rendered
+        # "シナリオCとシナリオD" correctly while the same speech in the flush came
+        # back "シナリオシート、シナリオリー", and letting the flush win meant
+        # answering the garbled version.
         tail = self._tail_text() if (now - self._tail_at) < 20 else ""
         if tail:
             with self._lock:
                 rows = [(s, l, t) for s, l, t in self._transcript if s >= old_cut]
-            # Drop the window the clip already covers, or the same words appear
-            # twice in two slightly different transcriptions.
-            covered = now - config.FLUSH_LOOKBACK_SECONDS
-            background = "\n".join(f"{l}: {t}" for s, l, t in rows if s < covered)
-            return background, tail
+            # Drop only the rows the clip genuinely restates, not everything in
+            # the window. Otherwise a good transcription is thrown away for a
+            # worse one covering the same seconds.
+            kept = [(s, l, t) for s, l, t in rows if _overlap(t, tail) < 0.6]
+            focus_rows = [(s, l, t) for s, l, t in kept if s >= focus_cut]
+            background = "\n".join(f"{l}: {t}" for s, l, t in kept if s < focus_cut)
+            focus = "\n".join(f"{l}: {t}" for _s, l, t in focus_rows)
+            # Flagged, not trusted blindly. The clip is newest but transcribed in
+            # one long pass, which mangles names and letters that the shorter
+            # chunks got right.
+            marked = f"[rough re-transcription of the last few seconds] {tail}"
+            return background, f"{focus}\n{marked}".strip() if focus else marked
 
         with self._lock:
             rows = [(stamp, label, text) for stamp, label, text in self._transcript
