@@ -55,244 +55,93 @@ from .meter import METER
 THEM = "Them"
 YOU = "You"
 
-_READ_RULE = """SOMETHING TO LOOK AT. A few answers cannot be heard, only read:
-code, a command, an exact identifier or path, a precise string. For those, and
-only those, write the spoken sentence first, then a line containing only ---,
-then the thing to read:
+_CUE_RULES = """DELIVERY. One sentence, 15-25 words — two only if the question has two
+halves. Spoken into the user's ear while the meeting keeps moving, so every
+extra word costs them the next thing said. Front-load: the substance in the
+first five words. Yes/no questions start with the yes or no. No hedging
+("I think", "generally"), no filler openers, no lists, no summaries, no markup.
 
-    Use a HashMap and merge counts as you go.
-    ---
-    Map<String, Integer> counts = new HashMap<>();
-    counts.merge(word, 1, Integer::sum);
+A cue for ONE listener, never repeated aloud by anyone. Strip the packaging,
+keep the substance — a sharp colleague leaning over, not a textbook:
 
-Everything above --- is spoken and must still obey the length rule on its own.
-Everything below is printed for them to read, is not spoken, and is exempt from
-the length rule — but keep it to the smallest complete thing that answers the
-question, not a tutorial.
+  BAD:  "Stack memory stores method calls and local variables; heap memory
+        stores objects and is managed by garbage collection."
+  GOOD: "Stack holds your local variables and method calls, heap is where
+        objects live — that's the part that gets garbage collected."
+  BAD:  "The November deadline is at risk because the authentication migration
+        has slipped by two weeks."
+  GOOD: "Probably not — auth slipped a couple of weeks, so November's tight."
+  GOOD (vi): "Stack giữ biến local với lời gọi hàm. Heap chứa object, và heap
+        mới bị garbage collect."
+  GOOD (ja): 「スタックはローカル変数とメソッド呼び出し。オブジェクトはヒープで、
+        GC 対象もヒープ側」
 
-Use this only when seeing it genuinely matters. An ordinary answer gets no ---
-block; a number, a name, or a yes/no never needs one."""
+LANGUAGE. Answer in the language the question was asked in; a mixed question
+gets its majority language. Keep technical terms exactly as spoken — engineers
+say "deploy", "stack", "milestone" in English mid-sentence in every language.
+No politeness forms: Japanese stays compact (です・ます or bare noun phrases, no
+敬語), Vietnamese drops pronouns entirely, no dạ/ạ.
 
-_LENGTH_RULE = """LENGTH IS THE FAILURE MODE. One sentence, 15-25 words. Two
-only if the question genuinely has two halves. This is spoken into someone's ear
-while the meeting keeps going, so every extra word costs them the next thing said
-in the room.
+SOMETHING TO LOOK AT. Only when the answer IS code, a command, or an exact
+identifier: the spoken sentence first (obeying the length rule), then a line
+containing only ---, then the thing to read. Below --- is printed, never
+spoken, exempt from the length rule — the smallest complete thing, not a
+tutorial. Ordinary answers never get a --- block."""
 
-Front-load it: the answer in the first few words, before any qualifier. If they
-stop listening after five words they should already have what they needed.
+# F9. Deliberately blind to the screen: mixing in screen context made it answer
+# questions nobody asked. Every behaviour in here was added against a measured
+# failure — trim with care, but keep it lean: this rides on every press, and at
+# one point the accumulated rules hit ~2,500 tokens of system prompt.
+_ANSWER_PROMPT = f"""Someone in a meeting just asked a question out loud and the user needs the
+answer in their ear immediately. You get a transcript tagged by speaker:
+"{THEM}:" is other people, "{YOU}:" is the user — treat those as their own
+words, so never tell them what they just said or contradict them without
+reason. You cannot see their screen.
 
-Cut hedging ("it seems", "generally", "typically", "I think"). Cut qualifiers
-that change nothing. Cut anything they can infer. No lists, no "firstly", no
-closing summary. Answer in the language being spoken. Plain speech, no markup."""
+ANSWER THE FINAL QUESTION ONLY. JUST SAID may hold several questions asked
+seconds apart; the earlier ones are context, not work — never merge them into
+one reply. ALREADY ANSWERED lists what you just answered: settled, kept for
+continuity ("and C and D?" needs the A-and-B before it). If the same question
+comes again, they did not hear you — answer it again, shorter.
 
-_TONE_RULE = """This is whispered to ONE person who is listening, not repeating
-it. Nobody else will ever hear your words. So this is not a script and not a
-line to be said — it is a cue, and the only thing that matters is how fast it
-lands on a single listen while the user is also following the room.
+The transcript is imperfect speech-to-text. A repeated line is one utterance
+heard twice. Near-identical forms of one term (ETA, EPA, ETR, ETL) are one
+word heard badly — pick the reading that fits the context and answer that. If
+the latest lines correct an earlier question ("no, ETL, not ETA"), the
+corrected question is the question.
 
-That means: strip the packaging, keep the substance. No politeness scaffolding,
-no framing, no full-sentence grammar for its own sake. "Asahi, 5.4 million,
-still in discovery" beats "The Asahi Group opportunity is valued at 5.4 million
-and remains in the discovery stage" — same facts, half the listening.
+If no question was asked, catch them up instead: what is being discussed and
+where it stands, leading with anything the room is waiting on the user for.
+Current state, not a history.
 
-Talk like a sharp colleague leaning over to help, not like a textbook. Use
-contractions. Use the everyday word over the formal one when both work. No
-semicolons, no "thus", "therefore", "moreover", "in addition" — those slow an
-ear down. Where a textbook would define a thing, say what it does or why it
-matters instead.
-
-Natural, not padded. Do not open with filler — no "So basically", no "Well, I
-think", no "Great question". Warmth costs nothing; throat-clearing costs a
-second of a conversation that is still moving.
-
-When the question is yes/no, start with the actual yes or no. "Probably not",
-"Yeah", "Not quite" — that is what front-loading sounds like in speech.
-
-Match these. The left column is what you must not produce:
-
-  TEXTBOOK: "Stack memory stores method calls and local variables; heap memory
-            stores objects and is managed by garbage collection."
-  SPOKEN:   "Stack holds your local variables and method calls, heap is where
-            objects live — and that's the part that gets garbage collected."
-
-  TEXTBOOK: "Dependency injection means providing an object with its
-            dependencies externally rather than having it construct them."
-  SPOKEN:   "You hand an object what it needs instead of letting it build its
-            own stuff — makes it way easier to swap and test."
-
-  TEXTBOOK: "The November deadline is at risk because the authentication
-            migration has slipped by two weeks."
-  SPOKEN:   "Probably not — auth slipped a couple of weeks, so November's tight."
-
-  TEXTBOOK: "Asahi Group is in the Discovery stage, valued at 5.4 million."
-  SPOKEN:   "That's Asahi, 5.4 million, still in discovery."
-
-Notice what changes: no semicolons, contractions throughout, dashes where you
-would pause, the definition replaced by what the thing actually does — and not
-one word spent on being a well-formed answer.
-
-The same applies in the other languages — natural speech, technical terms left
-in English exactly as engineers say them:
-
-  TEXTBOOK: "Bộ nhớ stack lưu trữ các lời gọi phương thức và các biến cục bộ,
-            trong khi bộ nhớ heap lưu trữ các đối tượng."
-  CUE:      "Stack giữ biến local với lời gọi hàm. Heap chứa object, và heap
-            mới bị garbage collect."
-
-  TEXTBOOK: 「スタックメモリはメソッド呼び出しおよびローカル変数を格納し、
-            ヒープメモリはオブジェクトを格納いたします。」
-  CUE:      「スタックはローカル変数とメソッド呼び出し。オブジェクトはヒープで、
-            GC 対象もヒープ側」"""
-
-# The user works across Vietnamese, Japanese and English, often inside the same
-# meeting. Left to itself a model drifts to English, translates technical terms
-# nobody translates out loud, and — worst — carries the "be conversational"
-# instruction into Japanese as plain form, which in a client meeting is a real
-# register mistake the user would then repeat.
-_LANGUAGE_RULE = f"""The user works in Vietnamese, Japanese and English, and
-meetings mix them.
-
-Answer in the language the question was asked in — that is the language the user
-is thinking in right now, and making them translate costs them the room. If a
-question mixes languages, use whichever one it is mostly in.
-
-Keep technical terms in the form they were spoken. Vietnamese and Japanese
-engineers say "deploy", "commit", "deadline", "stack", "heap", "review" in
-English inside their own sentences. Translating those into native equivalents
-makes the user stop and decode a term they already knew.
-
-Because the user only listens and never repeats this, politeness forms are
-wasted breath in every language:
-
-JAPANESE: plain, compact です・ます or bare noun phrases — whatever is shortest to
-take in. No 敬語, no 恐れ入りますが, no softening. 「スタックはローカル変数、ヒープは
-オブジェクト。GC 対象はヒープ側」is ideal: dense, instantly parsed.
-
-VIETNAMESE: drop pronouns entirely. Vietnamese lets you, they carry status the
-bot has no business guessing at, and nobody needs to be addressed — the user is
-just listening. No "dạ", no "ạ", no anh/chị/em.
-
-The 15-25 word target is English. Match the listening duration, not the word
-count — Japanese in particular says the same thing in far fewer characters."""
-
-_SPEAKERS_RULE = f"""The transcript is tagged by speaker. "{THEM}:" is other
-people in the meeting. "{YOU}:" is the user you are helping — treat those lines
-as their own words, so do not tell them something they just said themselves, and
-if they already answered, do not contradict them without reason."""
-
-# F9. Deliberately blind to the screen: this is the "what was just said" button,
-# and mixing in screen context makes it answer a question nobody asked.
-#
-# This prompt answers questions and does nothing else. An earlier version fell
-# back to summarising the discussion when it found no question, and that became
-# the behaviour you got most of the time — the user pressed the button mid-
-# meeting and was read a recap of a conversation they had just sat through.
-_ANSWER_PROMPT = f"""Someone in a meeting just asked a question out loud and the
-user needs the answer in their ear immediately. You get a transcript of what was
-said. You cannot see their screen.
-
-{_SPEAKERS_RULE}
-
-Your first job is to ANSWER THE MOST RECENT QUESTION. When there is a question,
-answer it and nothing else — do not also summarise, do not set the scene.
-
-ONLY THE LAST ONE. JUST SAID may contain several questions in a row, because
-people ask "and the totals for A and B?" then "and C and D?" seconds apart.
-Answer the FINAL question only. Never roll them together into one reply covering
-all of them — that answers a question nobody asked and buries the one they did.
-
-ALREADY ANSWERED lists questions you have just answered out loud. Those are
-settled. They are there so a follow-up still makes sense — "and C and D?" is
-meaningless without the "A and B" that came before it — but repeating any part
-of them wastes the seconds the user has. If the new question is the same one
-again, they did not hear you: answer it again, differently and shorter.
-
-The same words may appear more than once: speech is transcribed in overlapping
-passes, so a repeated line is one utterance heard twice, not someone asking
-twice. Treat it as one.
-
-A line marked [rough re-transcription of the last few seconds] is the newest
-audio, but it was transcribed in one long pass and garbles names, letters and
-identifiers that the shorter passes got right. When it and an ordinary line
-clearly describe the same utterance, take the wording from the ordinary line —
-"シナリオCとシナリオD" over "シナリオシート、シナリオリー", "ETL" over "ETR".
-Use the rough line for what is new in it, not for how it spells things.
-
-- Lead with the answer itself. First words are the substance.
-- Never restate or paraphrase the question. They just heard it.
-- Never recap, summarise, or describe the conversation. They were in it.
-- No preamble. Not "it sounds like", not "they're asking about", not "based on
-  the transcript". Just the answer.
-- Older lines are background for understanding the question. Do not answer them.
-
-CORRECTIONS. Speech-to-text mangles acronyms and names, and people correct
-themselves out loud. If the latest lines fix or sharpen an earlier question —
-"no, ETL, not ETA", "sorry, I meant the staging one", or simply the same term
-said again differently — then the question is the CORRECTED one. Answer that.
-Do not reply "No question asked" merely because the correction itself is not
-phrased as a question, and do not keep answering the version you saw first.
-
-When a term appears in several near-identical forms across the transcript (ETA,
-EPA, ETR, ETL), they are one word the transcriber heard badly. Pick the reading
-that makes sense with the surrounding words — "data engineer" next to it makes
-ETL right and ETA wrong — and answer that. If two readings are genuinely
-plausible and mean different things, say which one you assumed in two words.
-
-If NO question has been asked, catch them up instead: say what is being
-discussed and where it has got to. The current state, not a history — the point
-being argued, the number on the table, the thing that was decided. If someone is
-waiting on the user for something, lead with that. Same length limit; this is
-for someone who looked away for a minute, not a recap of the meeting.
-
-If a question was asked but the transcript does not contain what is needed to
-answer it, say in a few words what is missing — and if the answer would be on
+Ground everything in the transcript and the reference material. Never invent a
+figure, a name, or a commitment on the user's behalf. If what is needed is
+missing, say in a few words what is missing — and if it would be on the
 screen, say "check the screen" so they know to press the other button.
 
-Ground everything in the transcript. Never invent a figure, a name, or a
-commitment on the user's behalf.
+{_CUE_RULES}"""
 
-{_LENGTH_RULE}
+# F10. Same job with the actual pixels.
+_FULL_PROMPT = f"""The user is in a meeting and needs help right now. You get a screenshot of
+their screen and a transcript of what was said, tagged "{THEM}:" (other
+people) and "{YOU}:" (the user's own words). Either may be the important one.
 
-{_READ_RULE}
+THE SCREEN USUALLY CONTAINS THE QUESTION. A coding problem, a failing test, a
+stack trace, a form, a diff waiting on review — those are asks, not scenery,
+and describing them back is the one thing the user cannot use: they are
+looking at them. Priority:
 
-{_TONE_RULE}"""
+1. Someone asked out loud — answer that, grounded in the screen.
+2. Nothing said, but the screen poses a problem — SOLVE it. A coding problem
+   gets working code below the --- marker, matching the language, class and
+   method signatures already on screen. An error gets the fix.
+3. The screen poses nothing — say what it shows and the point it is making.
 
-# F10. Same job, but with the actual pixels — so it can read a figure the screen
-# loop's one-line summary never bothered to record.
-_FULL_PROMPT = f"""The user is in a meeting and needs help right now. You get a
-screenshot of what is on their screen, and the recent transcript of what has been
-said out loud. Either may be the important one.
+Never restate a problem instead of solving it. Read the screenshot exactly —
+figures, labels, names, error text. Never invent anything that is not in the
+image or the transcript.
 
-{_SPEAKERS_RULE}
-
-THE SCREEN USUALLY CONTAINS THE QUESTION. A coding problem, an exercise, a
-failing test, a stack trace, a form, a diff waiting on review — those are asks,
-not scenery. Solve what is on screen. Describing it back is the one thing the
-user cannot use: they are looking at it.
-
-In priority order:
-
-1. Someone asked something out loud — answer that, using the screen to ground it.
-2. Nothing was said, but the screen poses a problem — SOLVE IT. A coding problem
-   gets working code. An error gets the fix. A question gets its answer. Use the
-   --- block so the code or command is there to read.
-3. Only if the screen poses nothing at all — no task, no error, no question —
-   say what it shows and the point it is making.
-
-Never answer a coding problem by restating the problem. "The screen shows a Java
-problem: move zeros to the right" is a failure; the user can read that. Give the
-approach in one spoken line and the code below the marker.
-
-Read the screenshot carefully — exact figures, labels, names, error text, method
-signatures, the language it is written in. Match the language and style already
-on screen. Never invent anything that is not in the image or the transcript.
-
-{_LENGTH_RULE}
-
-{_READ_RULE}
-
-{_TONE_RULE}"""
-
+{_CUE_RULES}"""
 
 # --- device discovery ------------------------------------------------------
 
@@ -507,6 +356,14 @@ def probe_loopback(device: int, seconds: float = 1.2) -> tuple[float, float]:
         return float(np.sqrt(np.mean(np.square(audio))))
 
     return listen(play=False), listen(play=True)
+
+
+def _before_marker(text: str) -> str:
+    """The spoken part of an answer: everything above a --- line."""
+    for line_index, line in enumerate(text.splitlines()):
+        if line.strip() == config.READ_MARKER:
+            return "\n".join(text.splitlines()[:line_index]).strip()
+    return text.strip()
 
 
 def _system_prompt(base: str) -> str:
@@ -803,13 +660,28 @@ class AudioLoop:
         if not jobs:
             return False
 
-        got = False
+        # Both sources at once, not one after the other. When loopback and mic
+        # are both live, sequential transcription doubles the wait for zero
+        # benefit — the calls are independent and the API takes them in
+        # parallel. With one source active this changes nothing.
+        results: list[str | None] = [None] * len(jobs)
+
+        def work(index: int, source: Source, audio) -> None:
+            results[index] = self._transcribe(audio, source.samplerate, source.label)
+
+        threads = [
+            threading.Thread(target=work, args=(i, s, a), daemon=True)
+            for i, (s, a) in enumerate(jobs)
+        ]
+        for thread in threads:
+            thread.start()
         deadline = time.monotonic() + timeout
-        for source, audio in jobs:
-            if time.monotonic() > deadline:
-                break
+        for thread in threads:
+            thread.join(max(0.1, deadline - time.monotonic()))
+
+        got = False
+        for (source, audio), text in zip(jobs, results):
             seconds = len(audio) / max(1, source.samplerate)
-            text = self._transcribe(audio, source.samplerate, source.label)
             source.chunks += 1
             if not text:
                 continue
@@ -827,13 +699,13 @@ class AudioLoop:
             self._on_event(f"heard [{source.label}] ({seconds:.0f}s): {text}")
         return got
 
-    def answer_now(self) -> str:
-        """Answer live from the transcript, for a press we did not see coming.
+    def answer_now(self, on_spoken=None) -> str:
+        """Answer from the transcript. Every F9 press comes through here.
 
-        Every press comes through here: flush the last few seconds, then answer
-        from the transcript.
+        `on_spoken` fires with the spoken part as soon as it is complete, so
+        speech can start while any code block is still generating.
         """
-        return self._compose()
+        return self._compose("", on_spoken)
 
     def record_delivered(self, answer: str, question: str = "") -> None:
         """Note that this answer actually reached the user.
@@ -859,7 +731,7 @@ class AudioLoop:
             lines.append(f"A: {' '.join(answer.split())}")
         return "\n".join(lines)
 
-    def answer_with_screenshot(self, image) -> str:
+    def answer_with_screenshot(self, image, on_spoken=None) -> str:
         """The full-context button: real pixels plus the transcript.
 
         The screen loop's summary is a sentence written for a different purpose,
@@ -892,15 +764,16 @@ class AudioLoop:
                 },
             })
         try:
-            response = self._client.chat.completions.create(
-                model=config.VISION_MODEL,
-                messages=[
+            text, usage = self._answer_call(
+                [
                     {"role": "system", "content": _system_prompt(_FULL_PROMPT)},
                     {"role": "user", "content": content},
                 ],
+                model=config.VISION_MODEL,
+                on_spoken=on_spoken,
             )
-            METER.answered(getattr(response, "usage", None), vision=True)
-            return (response.choices[0].message.content or "").strip()
+            METER.answered(usage, vision=True)
+            return text.strip()
         except Exception as exc:
             self._fail_global(f"full answer failed: {exc}")
             return ""
@@ -1039,7 +912,7 @@ class AudioLoop:
             self._on_event(f"docs: could not read: {exc}")
             return ""
 
-    def _compose(self, question: str = "") -> str:
+    def _compose(self, question: str = "", on_spoken=None) -> str:
         """Transcript -> one spoken-length answer. No screen, by design.
 
         `question` is the line the matcher flagged. Passing it explicitly matters:
@@ -1079,42 +952,85 @@ class AudioLoop:
                 "discussed and where it stands."
             )
         try:
-            response = self._client.chat.completions.create(
-                model=config.ANSWER_MODEL,
-                messages=[
+            text, usage = self._answer_call(
+                [
                     {"role": "system", "content": _system_prompt(_ANSWER_PROMPT)},
                     {"role": "user", "content": "\n\n".join(parts)},
                 ],
+                on_spoken=on_spoken,
             )
-            return (response.choices[0].message.content or "").strip()
+            METER.answered(usage)
+            return text.strip()
         except Exception as exc:
             self._fail_global(f"answer failed: {exc}")
             return ""
 
-    def _answer_call(self, messages):
-        """Chat call with reasoning effort, falling back if the model rejects it.
+    def _answer_call(self, messages, model=None, on_spoken=None):
+        """Chat call. Returns (text, usage).
 
-        Worth the retry: effort is a per-press saving on the slowest step, but
-        the setting is model-specific and a hard failure here means no answer at
-        all. Once rejected it is not tried again.
+        With `on_spoken`, the response is STREAMED and the callback fires with
+        the spoken part the moment it is complete — at the --- marker when the
+        answer carries a code block, at stream end otherwise. The point is code
+        answers: the sentence you hear is done in under a second while the block
+        below the marker can generate for several more, and there is no reason
+        for the user's ear to wait on text their eyes will read.
+
+        reasoning_effort is retried without on rejection — it is model-specific,
+        and a hard failure here means no answer at all. Once rejected it is not
+        tried again.
         """
-        if config.ANSWER_EFFORT and not self._no_effort:
-            try:
-                return self._client.chat.completions.create(
-                    model=config.ANSWER_MODEL, messages=messages,
-                    reasoning_effort=config.ANSWER_EFFORT,
-                )
-            except Exception as exc:
-                if "reasoning" not in str(exc).lower():
-                    raise
-                self._no_effort = True
-                self._on_event(
-                    f"answer model rejects reasoning_effort={config.ANSWER_EFFORT!r}; "
-                    "using the default"
-                )
-        return self._client.chat.completions.create(
-            model=config.ANSWER_MODEL, messages=messages
-        )
+        model = model or config.ANSWER_MODEL
+
+        def create(stream: bool):
+            kwargs = {"model": model, "messages": messages}
+            if config.ANSWER_EFFORT and not self._no_effort:
+                kwargs["reasoning_effort"] = config.ANSWER_EFFORT
+            if stream:
+                kwargs["stream"] = True
+                # Without this a streamed response reports no token usage and
+                # the session cost meter goes quietly blind.
+                kwargs["stream_options"] = {"include_usage": True}
+            return self._client.chat.completions.create(**kwargs)
+
+        def run(stream: bool):
+            if not stream:
+                response = create(False)
+                return (response.choices[0].message.content or ""), \
+                    getattr(response, "usage", None)
+            buffer, fired, usage = "", False, None
+            for chunk in create(True):
+                if getattr(chunk, "usage", None):
+                    usage = chunk.usage
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if not delta:
+                    continue
+                buffer += delta
+                if not fired:
+                    # Fire only on a COMPLETE line equal to the marker — the
+                    # last line may still be mid-generation, and a substring
+                    # test would trip on ---- or a marker still being typed.
+                    lines = buffer.splitlines()
+                    done = lines[:-1] if not buffer.endswith("\n") else lines
+                    if any(l.strip() == config.READ_MARKER for l in done):
+                        spoken = _before_marker(buffer)
+                        if spoken:
+                            fired = True
+                            on_spoken(spoken)
+            if not fired and buffer.strip():
+                on_spoken(_before_marker(buffer))
+            return buffer, usage
+
+        try:
+            return run(stream=on_spoken is not None)
+        except Exception as exc:
+            if "reasoning" not in str(exc).lower() or self._no_effort:
+                raise
+            self._no_effort = True
+            self._on_event(
+                f"answer model rejects reasoning_effort={config.ANSWER_EFFORT!r}; "
+                "using the default"
+            )
+            return run(stream=on_spoken is not None)
 
     def _fail_global(self, message: str) -> None:
         """A fault that is not any one source's fault (API, network)."""

@@ -131,6 +131,27 @@ class Trigger:
         """F10 — what was said and what is shown, with the real screenshot."""
         self._dispatch(self._run_full)
 
+    def _early_speaker(self, started: float):
+        """A callback that speaks the moment the spoken sentence is complete.
+
+        The answer streams; the sentence you hear finishes generating well
+        before a code block below the --- marker does, and there is no reason
+        the ear should wait on text the eyes will read. `fired` tells _deliver
+        not to speak the same words again.
+        """
+        trigger = self
+
+        class _Speaker:
+            fired = False
+
+            def __call__(self, text: str) -> None:
+                self.fired = True
+                elapsed_ms = int((time.perf_counter() - started) * 1000)
+                log(f"speaking at {elapsed_ms}ms (answer may still be printing)")
+                trigger._speak(text)
+
+        return _Speaker()
+
     def _dispatch(self, target) -> None:
         if not self._busy.acquire(blocking=False):
             return  # already handling a press
@@ -177,9 +198,11 @@ class Trigger:
                 )
             return
 
-        live = self._audio.answer_now()
+        spoken_early = self._early_speaker(started)
+        live = self._audio.answer_now(on_spoken=spoken_early)
         if live:
-            self._deliver("From the room", live, started, "live from transcript", "live transcript")
+            self._deliver("From the room", live, started, "live from transcript",
+                          "live transcript", already_spoken=bool(spoken_early.fired))
         else:
             self._emit("Answer failed", "Could not answer from the transcript.", "", False)
 
@@ -197,11 +220,13 @@ class Trigger:
 
         # Same reason as F9: include what was said in the last few seconds.
         self._audio.flush_and_wait()
-        answer = self._audio.answer_with_screenshot(frame)
+        spoken_early = self._early_speaker(started)
+        answer = self._audio.answer_with_screenshot(frame, on_spoken=spoken_early)
         if not answer:
             self._run_screen(started)
             return
-        self._deliver("Screen + room", answer, started, "screenshot + transcript", "full")
+        self._deliver("Screen + room", answer, started, "screenshot + transcript",
+                      "full", already_spoken=bool(spoken_early.fired))
 
     def _run_screen(self, started: float) -> None:
         """Local screen answer. No model call — the screen loop already did it."""
@@ -228,7 +253,7 @@ class Trigger:
     # --- shared -------------------------------------------------------------
 
     def _deliver(self, title: str, body: str, started: float, note: str,
-                 label: str, question: str = "") -> None:
+                 label: str, question: str = "", already_spoken: bool = False) -> None:
         # Delivered answers enter the history, so the next question has context.
         if self._audio is not None:
             self._audio.record_delivered(body, question)
@@ -237,7 +262,10 @@ class Trigger:
         _events.put(("answer", title, printed, f"{elapsed_ms}ms · {note}", True))
         log(f"button -> {elapsed_ms}ms ({label})")
         log_answer(printed)
-        self._speak(spoken)
+        # Streamed answers were spoken mid-generation; saying them again would
+        # cancel the playback already in progress and start over.
+        if not already_spoken:
+            self._speak(spoken)
 
     def _emit(self, title: str, body: str, meta: str, accent: bool, spoken: str = "") -> None:
         """Show a card if the overlay is on, and always say something.
