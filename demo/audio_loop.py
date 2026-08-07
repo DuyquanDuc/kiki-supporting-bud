@@ -779,7 +779,10 @@ class AudioLoop:
                     self._transcript.popleft()
             self.chunks_transcribed += 1
             got = True
-            self._on_event(f"heard [{source.label}] ({seconds:.0f}s): {text[:70]}")
+            # Not truncated. This is the transcript itself now, not a preview of
+            # a 7-second chunk — a press can carry a minute of speech, and
+            # clipping it at 70 characters threw most of the meeting away.
+            self._on_event(f"heard [{source.label}] ({seconds:.0f}s): {text}")
         return got
 
     def answer_now(self) -> str:

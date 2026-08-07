@@ -35,7 +35,7 @@ _events: "queue.Queue[tuple]" = queue.Queue()
 
 # `heard [Them]: ...` lines get speaker colouring in the history window; every
 # other log line is plain status.
-_HEARD_RE = re.compile(r"^heard \[(\w+)\]: (.*)$", re.DOTALL)
+_HEARD_RE = re.compile(r"^heard \[(\w+)\](?: \(\d+s\))?: (.*)$", re.DOTALL)
 
 
 def log(message: str) -> None:
