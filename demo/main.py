@@ -210,16 +210,26 @@ class Trigger:
 
     def _run_full(self) -> None:
         started = time.perf_counter()
-        frame = self._loop.latest_frame()
-
-        # No audio loop and no frame means offline mode: fall back to the local
-        # screen-state answer, which needs neither.
-        if self._audio is None or frame is None:
+        if self._audio is None:
             self._run_screen(started)
             return
 
-        # Same reason as F9: include what was said in the last few seconds.
+        # Grab the screen WHILE the flush is on the network. The grab is ~160ms
+        # of local work and the flush is a round trip; they need nothing from
+        # each other, so running them in series just adds the two together.
+        grabbed: list = []
+        grab = threading.Thread(
+            target=lambda: grabbed.append(self._loop.latest_frame()), daemon=True
+        )
+        grab.start()
         self._audio.flush_and_wait()
+        grab.join(timeout=5)
+
+        frame = grabbed[0] if grabbed else None
+        if frame is None:
+            self._run_screen(started)
+            return
+
         spoken_early = self._early_speaker(started)
         answer = self._audio.answer_with_screenshot(frame, on_spoken=spoken_early)
         if not answer:
