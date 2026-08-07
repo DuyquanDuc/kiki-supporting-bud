@@ -170,7 +170,8 @@ class Trigger:
                 note = "repeated · answer was ready" if echoed else \
                        f"overheard · asked {pending.age_seconds:.0f}s ago"
                 self._deliver("Answering the question", pending.answer, started,
-                              note, "repeat" if echoed else "overheard")
+                              note, "repeat" if echoed else "overheard",
+                              question=pending.question)
                 return
 
         if not self._audio.has_transcript():
@@ -245,7 +246,12 @@ class Trigger:
 
     # --- shared -------------------------------------------------------------
 
-    def _deliver(self, title: str, body: str, started: float, note: str, label: str) -> None:
+    def _deliver(self, title: str, body: str, started: float, note: str,
+                 label: str, question: str = "") -> None:
+        # Only delivered answers enter the history — pre-answers are speculative
+        # and most are never served.
+        if self._audio is not None:
+            self._audio.record_delivered(body, question)
         spoken, printed = split_answer(body)
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         _events.put(("answer", title, printed, f"{elapsed_ms}ms · {note}", True))

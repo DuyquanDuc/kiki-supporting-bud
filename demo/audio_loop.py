@@ -220,10 +220,15 @@ Your first job is to ANSWER THE MOST RECENT QUESTION. When there is a question,
 answer it and nothing else — do not also summarise, do not set the scene.
 
 ONLY THE LAST ONE. JUST SAID may contain several questions in a row, because
-people ask "and the totals for A and B?" then "and C and D?" seconds apart. The
-earlier ones have already been answered and are there for context. Answer the
-FINAL question only. Never roll them together into one reply covering all of
-them — that answers a question nobody asked and buries the one they did.
+people ask "and the totals for A and B?" then "and C and D?" seconds apart.
+Answer the FINAL question only. Never roll them together into one reply covering
+all of them — that answers a question nobody asked and buries the one they did.
+
+ALREADY ANSWERED lists questions you have just answered out loud. Those are
+settled. They are there so a follow-up still makes sense — "and C and D?" is
+meaningless without the "A and B" that came before it — but repeating any part
+of them wastes the seconds the user has. If the new question is the same one
+again, they did not hear you: answer it again, differently and shorter.
 
 The same words may appear more than once: speech is transcribed in overlapping
 passes, so a repeated line is one utterance heard twice, not someone asking
@@ -664,6 +669,12 @@ class AudioLoop:
         # transcript because it overlaps it by design.
         self._tail: tuple = ()
         self._tail_at = 0.0
+        # Questions already answered, with what was said. This is what lets the
+        # focus window stay wide: earlier questions are marked as dealt with
+        # rather than hidden, so a follow-up keeps the context it needs without
+        # the answer folding the old questions back in.
+        self._history: deque[tuple[str, str]] = deque(maxlen=config.ANSWER_HISTORY)
+        self._last_query = ""
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -910,6 +921,31 @@ class AudioLoop:
         """
         return self._compose()
 
+    def record_delivered(self, answer: str, question: str = "") -> None:
+        """Note that this answer actually reached the user.
+
+        Recorded on delivery, not on composition: pre-answers are speculative
+        and most are never served, so recording them would fill the history with
+        questions the user never heard answered.
+        """
+        # A parked answer is delivered long after it was composed, by which time
+        # _last_query belongs to some later composition — so the caller passes
+        # the question it actually answered.
+        question = (question or self._last_query or "").strip()
+        if not question or not answer.strip():
+            return
+        spoken = answer.split(config.READ_MARKER)[0].strip() or answer.strip()
+        self._history.append((question[-300:], spoken[:300]))
+
+    def _history_text(self) -> str:
+        if not self._history:
+            return ""
+        lines = []
+        for question, answer in self._history:
+            lines.append(f"Q: {' '.join(question.split())}")
+            lines.append(f"A: {' '.join(answer.split())}")
+        return "\n".join(lines)
+
     def answer_with_screenshot(self, image) -> str:
         """The full-context button: real pixels plus the transcript.
 
@@ -1152,6 +1188,9 @@ class AudioLoop:
         instead of an answer.
         """
         background, focus = self._split_transcript()
+        # Remembered so record_delivered() knows what this answer answered,
+        # without main having to reconstruct it.
+        self._last_query = question or focus
         parts = []
         reference = self._reference(question or focus)
         if reference:
@@ -1162,6 +1201,13 @@ class AudioLoop:
             )
         if background:
             parts.append(f"BACKGROUND (context only — do not answer these):\n{background}")
+        already = self._history_text()
+        if already:
+            parts.append(
+                "ALREADY ANSWERED — you gave these moments ago. They are settled.\n"
+                "Use them for continuity, but do not answer them again and do not\n"
+                "fold them into your reply:\n" + already
+            )
         parts.append(f"JUST SAID (the live part of the conversation):\n{focus}")
         if question:
             parts.append(f"THE QUESTION TO ANSWER, heard moments ago:\n{question}")

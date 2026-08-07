@@ -98,11 +98,15 @@ ANSWER_CONTEXT_SECONDS = 180
 # older is passed as background only. Without this split the model reads three
 # minutes of chatter and summarises it instead of answering the last thing said.
 #
-# Kept short on purpose. At 45s a run of quick questions — "totals for A and B?"
-# then "and C and D?" — all sat inside the window at once, and the answer merged
-# them into "A and B, ABCD and the earlier breakdown are all unavailable"
-# instead of answering the one just asked.
-ANSWER_FOCUS_SECONDS = 18
+# Wide enough to keep a follow-up intelligible: "and C and D?" means nothing
+# without the "totals for A and B?" that preceded it. What stops the answer
+# merging them is ANSWER_HISTORY below — the questions already answered are
+# named as answered, rather than being hidden by a narrow window.
+ANSWER_FOCUS_SECONDS = 40
+# How many recent question/answer pairs to carry. They give the model continuity
+# and, more importantly, tell it which questions are already dealt with so it
+# answers only what is new.
+ANSWER_HISTORY = 3
 # A pre-computed answer older than this is stale — the meeting has moved on, so
 # the button answers live instead of replaying a dead question.
 PENDING_ANSWER_TTL = 45
