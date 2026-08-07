@@ -103,7 +103,7 @@ MIC_DEVICE = os.getenv("MIC_DEVICE", "").strip()
 # The question is almost always in the last few seconds. Anything older is
 # already in the transcript from earlier presses, so shortening this loses
 # nothing except re-transcribing speech nobody asked about.
-AUDIO_BUFFER_MAX_SECONDS = 45.0
+AUDIO_BUFFER_MAX_SECONDS = float(os.getenv("AUDIO_BUFFER_MAX_SECONDS", "45"))
 # Drain and transcribe in the background every this many seconds. 0 disables it.
 #
 # This is the middle ground between the two failed extremes. Chunking every 7s
@@ -117,7 +117,13 @@ AUDIO_BUFFER_MAX_SECONDS = 45.0
 # transcribe whatever has accumulated since the last sweep, usually well under
 # 40s. It also restores a transcript that fills in as the meeting goes, instead
 # of only when you ask.
-BACKGROUND_TRANSCRIBE_SECONDS = 20.0
+#
+# Settable in .env so the trade can be tested on real meeting audio rather than
+# argued from a synthetic benchmark. The 0.844-vs-0.992 figures came from
+# TTS-generated speech, which is cleaner and more evenly paced than a compressed
+# video call — a shorter sweep may hold up better on the real thing. Try 7 and
+# compare the transcript in the history window against a run at 20.
+BACKGROUND_TRANSCRIBE_SECONDS = float(os.getenv("BACKGROUND_TRANSCRIBE_SECONDS", "20"))
 # Reasoning effort for the answer call. Measured 1621ms at "low" against 1965ms
 # at default on the same question — small, but it is spent on every press.
 # "minimal" is rejected by this model. Sent only if the model accepts it.

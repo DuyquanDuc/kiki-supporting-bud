@@ -94,9 +94,13 @@ class Meter:
 
         lines = [f"session: {minutes:.0f} min"]
         if t_calls:
+            # Average clip length is the number to watch when tuning the sweep:
+            # it is what actually goes to the model in one pass, and short clips
+            # are where transcription accuracy falls apart.
+            average = t_secs / t_calls if t_calls else 0
             lines.append(
                 f"  transcribe  {t_calls:>4} calls  {t_secs / 60:6.1f} min audio"
-                f"   ${cost['transcribe']:.3f}"
+                f"  avg clip {average:4.0f}s   ${cost['transcribe']:.3f}"
             )
         if a_calls:
             lines.append(

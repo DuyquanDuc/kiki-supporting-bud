@@ -810,10 +810,13 @@ class AudioLoop:
         source.api = api
         source.samplerate = int(stream.samplerate)
         try:
+            sweep = config.BACKGROUND_TRANSCRIBE_SECONDS
+            cadence = (f"sweeping every {sweep:.0f}s" if sweep > 0
+                       else "transcribing only on press")
             self._on_event(
                 f"audio [{source.label}] listening — {source.device} via {api}, "
-                f"{source.samplerate}Hz, buffering until you press "
-                f"(max {config.AUDIO_BUFFER_MAX_SECONDS:.0f}s)"
+                f"{source.samplerate}Hz, {cadence} "
+                f"(buffer max {config.AUDIO_BUFFER_MAX_SECONDS:.0f}s)"
             )
             # Buffer only. Nothing is transcribed until a button press, so this
             # loop makes no network calls at all.
