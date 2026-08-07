@@ -414,6 +414,7 @@ def main() -> None:
                 on_event=log,
             )
             audio.start()
+            log(f"transcribing with {audio.transcription_route()}")
             # Sources die on their own threads, so without this the app looks
             # healthy while F9 quietly has nothing to work with.
             time.sleep(1.5)

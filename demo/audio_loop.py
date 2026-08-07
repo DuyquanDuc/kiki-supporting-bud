@@ -480,6 +480,18 @@ class AudioLoop:
 
     # --- lifecycle ----------------------------------------------------------
 
+    def transcription_route(self) -> str:
+        """Which provider this machine will transcribe with, in words.
+
+        Reported because it is invisible otherwise: the same code is twice as
+        fast on a machine whose .env has a Groq key, and nothing on screen would
+        say why.
+        """
+        if config.GROQ_API_KEY and not self._groq_dead:
+            return (f"groq {config.GROQ_TRANSCRIBE_MODEL} "
+                    f"(fallback: openai {config.TRANSCRIBE_MODEL})")
+        return f"openai {config.TRANSCRIBE_MODEL} (no GROQ_API_KEY — about 2x slower)"
+
     def start(self) -> None:
         for source in self.sources:
             source.thread = threading.Thread(

@@ -206,6 +206,36 @@ def check_audio_in() -> None:
         print(f"         [{index:>2}] {name}  ({channels}ch)")
 
 
+def check_transcription() -> None:
+    """Which provider transcribes on this machine, and does the fallback exist.
+
+    Worth its own check: a Groq key is a per-machine .env detail, so identical
+    code runs at half the speed on a laptop that has not been given one.
+    """
+    if not config.GROQ_API_KEY:
+        line(WARN, f"no GROQ_API_KEY — transcribing with openai "
+                   f"{config.TRANSCRIBE_MODEL}")
+        line(WARN, "   works fine, but Groq is about 2x faster at the same")
+        line(WARN, "   quality and free. Key from console.groq.com -> .env")
+        return
+    try:
+        from openai import OpenAI
+
+        groq = OpenAI(api_key=config.GROQ_API_KEY,
+                      base_url="https://api.groq.com/openai/v1", timeout=15.0)
+        names = {m.id for m in groq.models.list()}
+    except Exception as exc:
+        line(BAD, f"GROQ_API_KEY set but rejected: {str(exc).splitlines()[0][:60]}")
+        line(WARN, f"   falls back to openai {config.TRANSCRIBE_MODEL} automatically")
+        return
+    if config.GROQ_TRANSCRIBE_MODEL not in names:
+        line(BAD, f"groq has no model {config.GROQ_TRANSCRIBE_MODEL!r}")
+        line(WARN, f"   available: {', '.join(sorted(n for n in names if 'whisper' in n))}")
+        return
+    line(OK, f"transcribing with groq {config.GROQ_TRANSCRIBE_MODEL}")
+    line(OK, f"   fallback: openai {config.TRANSCRIBE_MODEL} if groq fails")
+
+
 def check_local_tts() -> None:
     """Which machine speaks locally and which pays the API round trip.
 
@@ -569,6 +599,8 @@ def main() -> None:
     check_audio_in()
     print("\n-- audio in: you (microphone)")
     check_mic()
+    print("\n-- transcription provider")
+    check_transcription()
     print("\n-- speech out (local vs API)")
     check_local_tts()
     print("\n-- data")
