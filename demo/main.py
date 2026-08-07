@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import queue
+import re
 import sys
 import threading
 import time
@@ -30,14 +31,23 @@ import tkinter as tk
 
 from . import audio_loop as audio_loop_mod, config, knowledge, region as region_mod, speech
 from .audio_loop import AudioLoop
+from .history import History
 from .overlay import Overlay
 from .screen_loop import ScreenLoop, ScreenState
 
 _events: "queue.Queue[tuple]" = queue.Queue()
 
+# `heard [Them]: ...` lines get speaker colouring in the history window; every
+# other log line is plain status.
+_HEARD_RE = re.compile(r"^heard \[(\w+)\]: (.*)$", re.DOTALL)
+
 
 def log(message: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
+    # Mirrored into the history window by the tk pump. Queued rather than drawn
+    # here because log() is called from the capture and answer threads, and
+    # tkinter must only be touched from the thread running its main loop.
+    _events.put(("log", message, "", "", False))
 
 
 def split_answer(body: str) -> tuple[str, str]:
@@ -378,7 +388,11 @@ def main() -> None:
 
     root = tk.Tk()
     root.withdraw()
-    overlay = Overlay(root, mode=config.OVERLAY_MODE)
+    # "history" is one persistent window; the other modes are per-press cards.
+    # They are alternatives, so only one is ever built.
+    use_history = config.OVERLAY_MODE == "history"
+    overlay = Overlay(root, mode="off" if use_history else config.OVERLAY_MODE)
+    history = History(root, enabled=use_history)
 
     def pump() -> None:
         try:
@@ -386,6 +400,13 @@ def main() -> None:
                 kind, title, body, meta, accent = _events.get_nowait()
                 if kind == "answer":
                     overlay.show(title, body, meta, accent=accent)
+                    history.answer(body, meta)
+                elif kind == "log":
+                    heard = _HEARD_RE.match(title)
+                    if heard:
+                        history.heard(heard.group(1), heard.group(2))
+                    else:
+                        history.note(title)
         except queue.Empty:
             pass
         root.after(40, pump)
@@ -414,6 +435,7 @@ def main() -> None:
         (config.HOTKEY_AUDIO, trigger.fire_audio),
         (config.HOTKEY_FULL, trigger.fire_full),
         (config.HOTKEY_REGION, repick),
+        (config.HOTKEY_HISTORY, lambda: root.after(0, history.toggle)),
         (config.HOTKEY_QUIT, lambda: root.after(0, quit_all)),
     ):
         key = getattr(kb.Key, spec.strip("<>").lower(), None)

@@ -255,24 +255,39 @@ Priority when the two disagree:
 2. Nothing said, screen poses a problem → solve it
 3. Screen poses nothing → say what it shows and the point it makes
 
-**Voice first, card only when there is something to read.** Ordinary answers are
-spoken and nothing appears on screen. When the answer carries code, a command or
-an exact string, a private card shows it — monospaced, never wrapped, and sized
-to the block. `OVERLAY_MODE` in `.env`:
+**One private window, opened once, holding the running history.** Not a popup per
+press. It shows what was heard and what was answered, colour-coded by speaker,
+with code set apart and monospaced. Scroll back through it; **F7** hides and
+shows it.
 
-| Value | Card appears |
+```
+Them: So, next question. Can you move all zeros in the array to the right?
+You: Sure, give me a second.
+
+> Use a write pointer for nonzeros, then fill the rest with zeros.
+    public static int[] moveZeros(int[] nums) {
+        int write = 0;
+        ...
+  2600ms · full
+```
+
+**Read from this window, not the terminal.** It is excluded from screen capture —
+measured at `760x460` with **0 pixels** visible to a screenshot. VS Code's
+terminal and Windows Terminal own their own windows, so neither can be hidden;
+anything you read there is in the screen share.
+
+It never takes focus, so scrolling it cannot swallow a keystroke meant for the
+meeting. It follows the newest line only when you are already at the bottom —
+scroll back to read something and it leaves you there.
+
+`OVERLAY_MODE` in `.env`:
+
+| Value | Behaviour |
 |---|---|
-| `read` *(default)* | only when there is something to look at |
-| `always` | every answer |
-| `off` | never |
-
-**Read code from the card, not the terminal.** The card is excluded from screen
-capture (measured: `780x272` window, **0 pixels** visible to a screenshot). VS
-Code's terminal and Windows Terminal own their own windows, so neither can be
-hidden — anything you read there is in the screen share.
-
-The card stays up longer for code than for a sentence, scaled by line count
-(20s + 2.5s per line, capped at two minutes) so it is not pulled away mid-read.
+| `history` *(default)* | one window with the running log |
+| `read` | a card, only when the answer has something to look at |
+| `always` | a card on every answer |
+| `off` | nothing; voice only |
 
 **The console is the transcript.** Every answer is printed under its timing
 line, interleaved with the `heard [...]` lines, so that window is a running

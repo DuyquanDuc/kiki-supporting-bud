@@ -119,6 +119,8 @@ PENDING_ANSWER_TTL = 45
 HOTKEY_AUDIO = os.getenv("HOTKEY_AUDIO", "<f9>").strip()
 HOTKEY_FULL = os.getenv("HOTKEY_FULL", "<f10>").strip()
 HOTKEY_REGION = os.getenv("HOTKEY_REGION", "<f8>").strip()
+# Show/hide the history window without quitting.
+HOTKEY_HISTORY = os.getenv("HOTKEY_HISTORY", "<f7>").strip()
 HOTKEY_QUIT = os.getenv("HOTKEY_QUIT", "<f12>").strip()
 
 # --- Overlay ---------------------------------------------------------------
@@ -126,17 +128,18 @@ HOTKEY_QUIT = os.getenv("HOTKEY_QUIT", "<f12>").strip()
 # read, because code cannot be listened to.
 READ_MARKER = "---"
 
-# When the private card appears:
-#   read   — only when the answer carries something you must look at: code, a
-#            command, an exact string. Everything else stays voice-only.
-#   always — every answer.
-#   off    — never.
+# Where answers appear on screen, if anywhere:
+#   history — ONE window, opened at startup, holding the running log of what was
+#             heard and what was answered. Scrollable. No per-press popups.
+#   read    — a card, only when the answer carries something to look at.
+#   always  — a card on every answer.
+#   off     — nothing; voice only.
 #
-# "read" by default. A card on every press is noise, but a code answer that only
-# exists as speech is useless — and reading it out of a terminal is worse, since
-# VS Code and Windows Terminal own their windows and cannot be kept out of a
-# screen share. This window can (see demo/privacy.py).
-OVERLAY_MODE = os.getenv("OVERLAY_MODE", "read").strip().lower()
+# "history" by default. Per-press cards were noise, and a code answer that
+# disappears after nine seconds is no use — but the terminal is not a safe place
+# to read from either, since VS Code and Windows Terminal own their windows and
+# cannot be kept out of a screen share. This one can (see demo/privacy.py).
+OVERLAY_MODE = os.getenv("OVERLAY_MODE", "history").strip().lower()
 # Superseded by OVERLAY_MODE, still honoured so an existing .env keeps working.
 if os.getenv("OVERLAY_ENABLED", "").strip() == "0" and not os.getenv("OVERLAY_MODE"):
     OVERLAY_MODE = "off"
@@ -152,6 +155,11 @@ OVERLAY_SECONDS = 9
 OVERLAY_READ_BASE_SECONDS = 20
 OVERLAY_READ_PER_LINE = 2.5
 OVERLAY_READ_MAX_SECONDS = 120
+# The history window. Big enough to hold a method body without wrapping.
+HISTORY_WIDTH = 760
+HISTORY_HEIGHT = 460
+# A long meeting would otherwise grow the buffer without limit.
+HISTORY_MAX_LINES = 2000
 OVERLAY_WIDTH = 460
 # Wider when there is code in it — wrapped code is unreadable.
 OVERLAY_CODE_WIDTH = 780
