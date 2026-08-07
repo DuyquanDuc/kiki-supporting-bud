@@ -131,6 +131,16 @@ ANSWER_FOCUS_SECONDS = 40
 # answers only what is new.
 ANSWER_HISTORY = 3
 
+# --- Cost estimate ---------------------------------------------------------
+# Printed on quit. USAGE is measured from what the API reports; these RATES are
+# a guess and go stale — this project pins a model whose pricing the code cannot
+# look up. Check them against your billing page and override in .env, otherwise
+# read the total as an order of magnitude rather than a bill.
+RATE_TRANSCRIBE_PER_MIN = float(os.getenv("RATE_TRANSCRIBE_PER_MIN", "0.003"))
+RATE_ANSWER_IN_PER_M = float(os.getenv("RATE_ANSWER_IN_PER_M", "2.50"))
+RATE_ANSWER_OUT_PER_M = float(os.getenv("RATE_ANSWER_OUT_PER_M", "10.00"))
+RATE_TTS_PER_M_CHARS = float(os.getenv("RATE_TTS_PER_M_CHARS", "15.00"))
+
 # --- Reference documents ---------------------------------------------------
 # .txt and .md files in DOCS_DIR, sent whole with every answer. Re-read on each
 # press, so a file dropped in mid-meeting is live on the next press.

@@ -15,6 +15,7 @@ import threading
 import time
 
 from . import config
+from .meter import METER
 
 # Stereo Mix lags the sound card slightly, so the audio loop has to stay deaf
 # for a moment after playback ends or it captures the tail of our own answer.
@@ -97,6 +98,7 @@ class Speaker:
         self._cancel = threading.Event()
         cancel = self._cancel
         self._spoke_at = time.monotonic()
+        METER.spoke(shorten(text))
         self._thread = threading.Thread(
             target=self._run, args=(shorten(text), cancel), daemon=True
         )

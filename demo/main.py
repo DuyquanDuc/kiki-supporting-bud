@@ -28,6 +28,7 @@ import tkinter as tk
 from . import audio_loop as audio_loop_mod, config, knowledge, region as region_mod, speech
 from .audio_loop import AudioLoop
 from .history import History
+from .meter import METER
 from .overlay import Overlay
 from .screen_loop import ScreenLoop, ScreenState
 
@@ -476,6 +477,10 @@ def main() -> None:
             speaker.stop()
         hotkeys.stop()
         log("stopped")
+        # Last thing printed, so a session ends by saying what it spent. Printed
+        # rather than logged: the history window is already gone by now.
+        for line in METER.report():
+            print(f"           {line}", flush=True)
 
 
 if __name__ == "__main__":

@@ -50,6 +50,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import config, docs as documents
+from .meter import METER
 
 THEM = "Them"
 YOU = "You"
@@ -898,6 +899,7 @@ class AudioLoop:
                     {"role": "user", "content": content},
                 ],
             )
+            METER.answered(getattr(response, "usage", None), vision=True)
             return (response.choices[0].message.content or "").strip()
         except Exception as exc:
             self._fail_global(f"full answer failed: {exc}")
@@ -1020,6 +1022,7 @@ class AudioLoop:
             if vocabulary:
                 request["prompt"] = vocabulary
             response = self._client.audio.transcriptions.create(**request)
+            METER.transcribed(len(chunk) / max(1, samplerate))
         except Exception as exc:
             self._fail_global(f"transcription failed ({label}): {exc}")
             return ""
