@@ -75,9 +75,33 @@ MIC_DEVICE = os.getenv("MIC_DEVICE", "").strip()
 # scales sub-linearly (16s->1.0s, 64s->2.5s, 96s->3.9s), so one long pass is
 # affordable, and it costs one call per press instead of hundreds per meeting.
 #
-# This caps how much audio a single press can transcribe. Without it, an hour of
-# talking with no press would try to send an hour.
-AUDIO_BUFFER_MAX_SECONDS = 120.0
+# This caps how much audio a single press can transcribe — the oldest audio is
+# dropped once the buffer is full.
+#
+# Kept short, and it is the main lever on press latency. At 120s a real session
+# hit the cap repeatedly and presses took 7-10s: two minutes of speech to
+# transcribe, then ~2000 words of it in the answer prompt. Worse, the whole two
+# minutes arrives as ONE transcript entry stamped "now", so all of it counts as
+# JUST SAID and the model has to hunt for the question inside a monologue.
+#
+# The question is almost always in the last few seconds. Anything older is
+# already in the transcript from earlier presses, so shortening this loses
+# nothing except re-transcribing speech nobody asked about.
+AUDIO_BUFFER_MAX_SECONDS = 45.0
+# Drain and transcribe in the background every this many seconds. 0 disables it.
+#
+# This is the middle ground between the two failed extremes. Chunking every 7s
+# was fast at the button but wrong — 0.844 against ground truth, boundaries
+# mid-word, "cái ví dụ HTML" as "cái ví TML". Transcribing only on press was
+# accurate but slow, because a whole meeting's audio piles up and the press pays
+# for all of it: measured 7-10s.
+#
+# At 40s the boundary cost is small (one pass 0.992, split in two 0.977 — the
+# loss is per boundary, and this makes them rare) while the press only has to
+# transcribe whatever has accumulated since the last sweep, usually well under
+# 40s. It also restores a transcript that fills in as the meeting goes, instead
+# of only when you ask.
+BACKGROUND_TRANSCRIBE_SECONDS = 40.0
 # Below this much buffered audio there is nothing worth a call.
 FLUSH_MIN_SECONDS = 0.7
 # Mean RMS (float32, 0-1) below which a chunk counts as silence and is dropped

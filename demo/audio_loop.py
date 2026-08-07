@@ -1,4 +1,4 @@
-"""Meeting audio: capture continuously, transcribe only on a button press.
+"""Meeting audio: capture continuously, transcribe on a slow sweep and on press.
 
 Loop 2 of the three in docs/architecture.md. Listens on **two** sources at once
 and merges them into one rolling 15-minute transcript, tagged by who spoke:
@@ -12,16 +12,20 @@ you through. And they fail independently: a machine where Stereo Mix is disabled
 still has a working mic, so one dead source degrades the transcript instead of
 killing it.
 
-Nothing is transcribed in the background. Audio accumulates in memory and a
-press transcribes everything since the last one, in a single pass.
+Audio accumulates in memory and is transcribed in ONE pass, either by a slow
+background sweep or by a button press — whichever comes first. Both drain the
+same buffer under one lock, so an utterance never gets split between them.
 
-That is the opposite of where this started, and the measurements forced it. The
-same 20s of speech scored 0.992 against known ground truth transcribed whole,
-0.977 split in two, and 0.844 split in four: every boundary lands mid-word and
-both halves come back wrong. "cái ví dụ HTML" became "cái ví TML". Latency
-scales sub-linearly (16s->1.0s, 64s->2.5s, 96s->3.9s), so one long pass is
-affordable — and it costs one call per press rather than a few hundred over a
-meeting, most of them transcribing speech nobody ever asked about.
+The cadence is the whole design, and both extremes were tried and failed. At 7s
+it was fast at the button and wrong: 0.844 against known ground truth, because
+every boundary lands mid-word and both halves come back garbled — "cái ví dụ
+HTML" as "cái ví TML". Transcribing only on press scored 0.992 but a whole
+meeting piled up behind one button, and presses measured 7-10s.
+
+A ~40s sweep sits between them. Boundary cost is paid per boundary, so making
+them rare costs almost nothing (0.992 whole against 0.977 split in two), while
+the press only has to transcribe what has arrived since the last sweep. It also
+means the transcript fills in during the meeting rather than only when asked.
 
 Two gates keep it honest:
 
@@ -609,6 +613,7 @@ class AudioLoop:
         # focus window stay wide: earlier questions are marked as dealt with
         # rather than hidden, so a follow-up keeps the context it needs without
         # the answer folding the old questions back in.
+        self._flush_lock = threading.Lock()
         self._history: deque[tuple[str, str]] = deque(maxlen=config.ANSWER_HISTORY)
         self._last_query = ""
 
@@ -621,6 +626,8 @@ class AudioLoop:
                 name=f"audio-{source.label}",
             )
             source.thread.start()
+        if config.BACKGROUND_TRANSCRIBE_SECONDS > 0:
+            threading.Thread(target=self._sweep, daemon=True, name="audio-sweep").start()
 
     def stop(self) -> None:
         self._halt.set()
@@ -735,6 +742,27 @@ class AudioLoop:
         with self._lock:
             return bool(self._transcript)
 
+    def _sweep(self) -> None:
+        """Transcribe on a slow cadence so the button has less left to do.
+
+        Deliberately infrequent. The cost of a chunk boundary is paid per
+        boundary, so a sweep every 40s loses almost nothing (0.992 whole vs
+        0.977 split in two) where a 7s cadence lost a great deal. What it buys
+        is a press that only transcribes the remainder, and a transcript that
+        fills in during the meeting rather than only when asked.
+        """
+        while not self._halt.is_set():
+            if self._halt.wait(config.BACKGROUND_TRANSCRIBE_SECONDS):
+                return
+            # Never while the bot is talking: the buffer is being discarded
+            # anyway, and a sweep would just spend a call on the gap.
+            if self._is_muted():
+                continue
+            try:
+                self.flush_and_wait()
+            except Exception as exc:
+                self._on_event(f"audio sweep failed: {exc}")
+
     def flush_and_wait(self, timeout: float = 12.0) -> bool:
         """Transcribe everything captured since the last press, and keep it.
 
@@ -748,6 +776,18 @@ class AudioLoop:
 
         Returns True if it produced anything.
         """
+        # A press and a background sweep must never drain the same buffer at
+        # once, or half an utterance goes to each and both come back wrong.
+        # The press waits for an in-flight sweep rather than skipping: it needs
+        # that text to answer.
+        if not self._flush_lock.acquire(timeout=timeout):
+            return False
+        try:
+            return self._flush(timeout)
+        finally:
+            self._flush_lock.release()
+
+    def _flush(self, timeout: float) -> bool:
         jobs = []
         for source in self.sources:
             if not source.alive:

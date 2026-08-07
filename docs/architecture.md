@@ -34,7 +34,7 @@ Capture and cropping details are in [screen-capture.md](screen-capture.md).
 - Transcribe **nothing** in the background — audio just accumulates in memory
 - A press transcribes everything since the last press, in one pass
 
-### Why nothing is chunked
+### Why the cadence is slow, not off and not fast
 
 This started out chunking continuously, and every version of that was worse.
 Measured against known ground truth, the same 20s of Vietnamese speech scored:
@@ -49,14 +49,16 @@ Every boundary lands mid-word, and half a word transcribes as a *different*
 word — in both chunks. That is what turned "cái ví dụ HTML" into "cái ví TML"
 and "cái thang" into "cái thằng", and no amount of pause detection fixed it.
 
-Latency does not punish the long pass: 16s → 1.0s, 64s → 2.5s, 96s → 3.9s, and
-in practice variance dominates length. A press costs 2.5–3.8s end to end,
-transcription plus answer.
+But transcribing *only* on press was the other extreme, and it was slow: a whole
+meeting piles up behind one button, and real presses measured 7-10s.
 
-It is also far cheaper — one call per press rather than a few hundred over a
-meeting, most of them transcribing speech nobody ever asked about.
+A ~40s sweep sits between them. Boundary cost is paid per boundary, so making
+them rare costs almost nothing, while the press only transcribes what arrived
+since the last sweep. The transcript also fills in during the meeting rather
+than only when asked.
 
-A 120s cap bounds how much one press can transcribe.
+Press and sweep drain the same buffer under one lock, so an utterance is never
+split between them. A 45s cap bounds the buffer.
 
 ### The gates
 
