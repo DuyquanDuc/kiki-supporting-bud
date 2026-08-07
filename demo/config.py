@@ -17,8 +17,6 @@ PROFILE_FILE = DATA_DIR / "profile.md"
 # Drop reference documents here before a meeting — job spec, CV, architecture
 # note, agenda. Gitignored: these are yours and some of them will be sensitive.
 DOCS_DIR = DATA_DIR / "docs"
-DOCS_CACHE_META = DOCS_DIR / ".index-keys.json"
-DOCS_CACHE_VECTORS = DOCS_DIR / ".index-vectors.npz"
 
 load_dotenv(ROOT / ".env")
 
@@ -102,18 +100,13 @@ ANSWER_FOCUS_SECONDS = 45
 PENDING_ANSWER_TTL = 45
 
 # --- Reference documents ---------------------------------------------------
+# .txt and .md files in DOCS_DIR, sent whole with every answer. Re-read on each
+# press, so a file dropped in mid-meeting is live on the next press.
 DOCS_ENABLED = os.getenv("DOCS_ENABLED", "1").strip() == "1"
-# Multilingual on purpose: a question asked in Japanese has to find an answer
-# written in an English document, which keyword matching cannot do.
-EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small").strip()
-# Big enough to hold a whole idea, small enough that four of them fit in a
-# prompt without crowding out the transcript.
-DOCS_CHUNK_CHARS = 500
-DOCS_CHUNK_OVERLAP = 150
-DOCS_TOP_K = 4
-# Cosine similarity below this means the documents have nothing to say about the
-# question. Passing them anyway invites the model to force a connection.
-DOCS_MIN_SCORE = 0.28
+# Not a limit — a warning. Past this the folder is big enough that sending it
+# whole is the wrong design and retrieval would be worth its complexity again.
+# ~20k characters is roughly 5k tokens on every single answer.
+DOCS_MAX_CHARS = int(os.getenv("DOCS_MAX_CHARS", "20000"))
 
 # --- Trigger ---------------------------------------------------------------
 # Two answer buttons, deliberately different jobs.

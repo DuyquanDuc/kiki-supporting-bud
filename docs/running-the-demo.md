@@ -57,26 +57,20 @@ The difference on real questions:
 | Does a rollback restore the database? | *"Not necessarily — check the rollback plan on screen."* | *"No. Rollback only swaps traffic back; schema changes stay forward-only."* |
 | Who do I escalate to? | *"I don't have the owner's name."* | *"Huong — escalate the Atlas migration to her, not the platform team."* |
 
-**Latency is not the trade-off you would expect.** All the expensive work —
-reading, chunking, embedding — happens at startup, because the documents are
-known before the meeting. That is the same principle the audio loop runs on. The
-press costs one embedding of the question, measured at **250–500ms**, and in
-practice answers often came back *faster* with documents attached, because a
-certain answer is shorter than a hedged one.
+**No retrieval, no index, no added latency.** The full text is handed to the
+model with every answer. An earlier version embedded and searched chunks per
+press; for the handful of small documents one person brings to a meeting that
+bought nothing and cost an embedding round trip on every press, plus a relevance
+threshold that could silently drop the one passage that mattered.
 
-The index is cached, so restarting with unchanged files costs nothing, and
-editing one file re-embeds only that file.
+Documents are re-read on **every press**, so editing a file — or dropping a new
+one in — takes effect on the next button press with no restart.
 
-**Retrieval is by meaning, not keywords**, which matters across three languages:
-「ロールバックはデータベースを戻しますか」 scored **0.49** against the *English*
-rollback section. Keyword matching cannot do that. A question with nothing
-relevant in the documents attaches nothing rather than forcing a connection —
-"what is the capital of France" retrieved nothing at all.
+**Keep it small.** Everything goes with every answer, which is right for a few
+pages and wrong for a library. Past ~20,000 characters (`DOCS_MAX_CHARS`) the
+app warns that it is costing real tokens on every reply.
 
-**Your documents stay on your machine.** The folder is gitignored, and only the
-passages matching a question are ever sent. Keep it relevant rather than
-exhaustive: four passages are attached to any one answer, so a folder holding
-everything you own competes with itself.
+**Your documents stay on your machine.** The folder is gitignored.
 
 ## Telling it about you
 

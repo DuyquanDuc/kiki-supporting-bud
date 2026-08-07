@@ -12,9 +12,8 @@ you press.
 export or save it as text first. A PDF or Word file dropped in here will say so
 in the log rather than quietly doing nothing.
 
-Indexed at startup and cached, so a restart with unchanged files costs nothing.
-Edit a file and only that file is re-embedded. The press itself costs one small
-embedding of the question — measured at 250-500ms.
+Sent whole with every answer, and re-read on every press — so editing a file, or
+dropping a new one in, takes effect on the next button press with no restart.
 
-Keep it relevant rather than exhaustive. Four passages are attached to any one
-answer, so a folder of everything you own competes with itself.
+Keep it small. The full text goes with every answer, so this is right for a few
+pages and wrong for a library; past ~20,000 characters the app says so.

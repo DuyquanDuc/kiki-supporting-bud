@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import config
+from . import config, docs as documents
 
 THEM = "Them"
 YOU = "You"
@@ -621,11 +621,8 @@ class AudioLoop:
     nothing else.
     """
 
-    def __init__(self, client, sources, is_muted=None, on_event=None, docs=None):
+    def __init__(self, client, sources, is_muted=None, on_event=None):
         self._client = client
-        # Reference documents indexed before the meeting. Optional: without it
-        # the bot answers from the room and the screen alone.
-        self._docs = docs
         self.sources = [
             Source(label, candidates if not isinstance(candidates, int)
                    else [(candidates, f"device {candidates}", "pinned")])
@@ -1108,14 +1105,14 @@ class AudioLoop:
             "ready for the button"
         )
 
-    def _reference(self, query: str) -> str:
-        """Relevant passages from the user's documents, or "" if none apply."""
-        if self._docs is None or not query.strip():
+    def _reference(self, _query: str = "") -> str:
+        """The user's documents, whole. Re-read each time so edits are live."""
+        if not config.DOCS_ENABLED:
             return ""
         try:
-            return self._docs.context(query)
+            return documents.load()
         except Exception as exc:
-            self._on_event(f"docs: lookup failed: {exc}")
+            self._on_event(f"docs: could not read: {exc}")
             return ""
 
     def _compose(self, question: str = "") -> str:

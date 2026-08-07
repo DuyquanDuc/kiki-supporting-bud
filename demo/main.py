@@ -31,7 +31,6 @@ import tkinter as tk
 
 from . import audio_loop as audio_loop_mod, config, knowledge, region as region_mod, speech
 from .audio_loop import AudioLoop
-from .docs import DocStore
 from .history import History
 from .overlay import Overlay
 from .screen_loop import ScreenLoop, ScreenState
@@ -322,12 +321,10 @@ def main() -> None:
             raise SystemExit(1)
         log(f"watching region {region}")
 
-    docs = None
-    if config.DOCS_ENABLED and client is not None:
-        docs = DocStore(client, on_event=log)
-        # Indexed on a worker so a big folder does not hold up the hotkeys —
-        # the meeting may already have started.
-        threading.Thread(target=docs.load, daemon=True).start()
+    if config.DOCS_ENABLED:
+        from . import docs as documents
+        log(documents.summary())
+        documents.load(on_event=log)   # surfaces skipped files at startup
 
     rows = knowledge.load_rows(config.SALES_CSV)
     log(f"loaded {len(rows)} rows from {config.SALES_CSV.name}")
@@ -377,7 +374,6 @@ def main() -> None:
                 # either way the bot transcribes itself and answers itself.
                 is_muted=(speaker.is_speaking if speaker is not None else None),
                 on_event=log,
-                docs=docs,
             )
             audio.start()
             # Sources die on their own threads, so without this the app looks
