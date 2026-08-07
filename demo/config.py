@@ -29,6 +29,18 @@ VISION_MODEL = os.getenv("VISION_MODEL", "gpt-5.6-luna").strip()
 TTS_MODEL = os.getenv("TTS_MODEL", "gpt-4o-mini-tts").strip()
 TTS_VOICE = os.getenv("TTS_VOICE", "alloy").strip()
 TRANSCRIBE_MODEL = os.getenv("TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe").strip()
+# Transcription only. With a Groq key, whisper-large-v3-turbo runs it in roughly
+# half the time at the same quality — measured 554ms against 1119ms on 20-26s of
+# speech, with identical English output and Japanese scoring 0.98 on both.
+# Transcription is ~40% of a press, so this is the largest saving left.
+#
+# The OpenAI model stays as the fallback and is used automatically if Groq fails
+# — the free tier is rate limited, and a 429 mid-meeting must not cost an answer.
+# Leave the key blank to use OpenAI for everything.
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+GROQ_TRANSCRIBE_MODEL = os.getenv("GROQ_TRANSCRIBE_MODEL", "whisper-large-v3-turbo").strip()
+# Groq rejects a vocabulary prompt over 896 characters; OpenAI allows more.
+GROQ_PROMPT_LIMIT = 880
 # Text-only reasoning over transcript + screen state. Same model as vision by
 # default; there is no reason it has to be.
 #

@@ -30,6 +30,10 @@ class Meter:
 
     transcribe_calls: int = 0
     transcribe_seconds: float = 0.0
+    # Groq's free tier costs nothing, so it is counted separately rather than
+    # billed at the OpenAI rate and inflating the session total.
+    groq_calls: int = 0
+    groq_seconds: float = 0.0
 
     answer_calls: int = 0
     answer_in: int = 0
@@ -44,10 +48,14 @@ class Meter:
 
     # --- recording ---------------------------------------------------------
 
-    def transcribed(self, seconds: float) -> None:
+    def transcribed(self, seconds: float, provider: str = "openai") -> None:
         with self.lock:
-            self.transcribe_calls += 1
-            self.transcribe_seconds += max(0.0, seconds)
+            if provider == "groq":
+                self.groq_calls += 1
+                self.groq_seconds += max(0.0, seconds)
+            else:
+                self.transcribe_calls += 1
+                self.transcribe_seconds += max(0.0, seconds)
 
     def answered(self, usage, vision: bool = False) -> None:
         """Record token usage from a chat response. Tolerates a missing usage."""
@@ -86,6 +94,7 @@ class Meter:
         with self.lock:
             minutes = (time.monotonic() - self.started) / 60.0
             t_calls, t_secs = self.transcribe_calls, self.transcribe_seconds
+            g_calls, g_secs = self.groq_calls, self.groq_seconds
             a_calls, a_in, a_out = self.answer_calls, self.answer_in, self.answer_out
             v_calls, v_in, v_out = self.vision_calls, self.vision_in, self.vision_out
             s_calls, s_chars = self.tts_calls, self.tts_chars
@@ -102,6 +111,11 @@ class Meter:
                 f"  transcribe  {t_calls:>4} calls  {t_secs / 60:6.1f} min audio"
                 f"  avg clip {average:4.0f}s   ${cost['transcribe']:.3f}"
             )
+        if g_calls:
+            lines.append(
+                f"  transcribe  {g_calls:>4} calls  {g_secs / 60:6.1f} min audio"
+                f"  avg clip {g_secs / g_calls:4.0f}s   free (groq)"
+            )
         if a_calls:
             lines.append(
                 f"  answers     {a_calls:>4} calls  {a_in:>7,} in / {a_out:,} out"
@@ -117,7 +131,7 @@ class Meter:
                 f"  speech      {s_calls:>4} calls  {s_chars:>7,} chars"
                 f"          ${cost['speech']:.3f}"
             )
-        if not (t_calls or a_calls or v_calls or s_calls):
+        if not (t_calls or g_calls or a_calls or v_calls or s_calls):
             lines.append("  nothing was sent this session")
             return lines
 

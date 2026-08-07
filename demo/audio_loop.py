@@ -473,6 +473,8 @@ class AudioLoop:
         # the answer folding the old questions back in.
         self._flush_lock = threading.Lock()
         self._no_effort = False
+        self._groq_client = None
+        self._groq_dead = False
         self._history: deque[tuple[str, str]] = deque(maxlen=config.ANSWER_HISTORY)
         self._last_query = ""
 
@@ -886,15 +888,66 @@ class AudioLoop:
         profile = load_profile()
         return profile[:900] if profile else ""
 
+    def _groq(self):
+        """Lazily built Groq client, or None if unconfigured or disabled."""
+        if not config.GROQ_API_KEY or self._groq_dead:
+            return None
+        if self._groq_client is None:
+            try:
+                from openai import OpenAI
+
+                self._groq_client = OpenAI(
+                    api_key=config.GROQ_API_KEY,
+                    base_url="https://api.groq.com/openai/v1",
+                    timeout=20.0,
+                )
+            except Exception:
+                self._groq_dead = True
+                return None
+        return self._groq_client
+
     def _transcribe(self, chunk: np.ndarray, samplerate: int, label: str) -> str:
+        """Groq first when configured, OpenAI as the fallback.
+
+        Measured at roughly half the latency for the same text — 554ms against
+        1119ms on 20-26s of speech, with identical English output. Transcription
+        is about 40% of a press, so it is the largest saving available.
+
+        A failure here must never cost an answer, so anything that goes wrong
+        falls through to OpenAI. An auth failure disables Groq for the session
+        (every later call would waste a round trip); a rate limit does not, since
+        the free tier's limits reset and the next press may well succeed.
+        """
+        vocabulary = self._vocabulary()
+        groq = self._groq()
+
+        if groq is not None:
+            try:
+                request = {
+                    "model": config.GROQ_TRANSCRIBE_MODEL,
+                    "file": self._to_wav(chunk, samplerate),
+                    "response_format": "text",
+                }
+                if vocabulary:
+                    request["prompt"] = vocabulary[:config.GROQ_PROMPT_LIMIT]
+                response = groq.audio.transcriptions.create(**request)
+                METER.transcribed(len(chunk) / max(1, samplerate), provider="groq")
+                text = response if isinstance(response, str) else getattr(response, "text", "")
+                return " ".join(str(text).split())
+            except Exception as exc:
+                message = str(exc)
+                if "401" in message or "invalid_api_key" in message:
+                    self._groq_dead = True
+                    self._on_event("groq key rejected — using OpenAI for transcription")
+                else:
+                    self._on_event(f"groq transcription failed, falling back: {message[:70]}")
+
         try:
-            audio = self._to_wav(chunk, samplerate)
             request = {
                 "model": config.TRANSCRIBE_MODEL,
-                "file": audio,
+                "file": self._to_wav(chunk, samplerate),
                 "response_format": "text",
             }
-            vocabulary = self._vocabulary()
             if vocabulary:
                 request["prompt"] = vocabulary
             response = self._client.audio.transcriptions.create(**request)
