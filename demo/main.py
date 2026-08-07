@@ -5,8 +5,7 @@
 
 Two answer buttons, deliberately different jobs:
 
-    F9   what was SAID. Transcript only, blind to the screen. Instant when the
-         audio loop already pre-answered a question it overheard.
+    F9   what was SAID. Transcript only, blind to the screen.
     F10  what was said AND what is shown. Sends the real screenshot, so it reads
          detail the screen loop's one-line summary never recorded. Costs a
          vision round trip. With no transcript yet it is just "read the screen".
@@ -14,9 +13,6 @@ Two answer buttons, deliberately different jobs:
 F8 re-picks the capture region, F12 quits. Answers are spoken to your pinned
 output device and mirrored to a private overlay.
 
-F9's fast path does no model call at all — the audio loop answered the question
-in the background the moment it heard it, so the press is a variable read. That
-is the entire point of the design.
 """
 
 from __future__ import annotations
@@ -156,23 +152,7 @@ class Trigger:
         # Transcribe the last few seconds now. The question you just heard exists
         # only as raw samples until this runs — without it the button confidently
         # answers the previous topic.
-        fresh = self._audio.flush_and_wait()
-
-        # A question the loop already overheard and answered: nothing to do but
-        # read a variable. Normally skipped when the flush found newer speech,
-        # since the parked answer predates it — except when that newer speech is
-        # them repeating the same question, which is the whole point of asking
-        # them to say it again.
-        pending = self._audio.take_pending()
-        if pending is not None:
-            echoed = fresh and self._audio.tail_echoes(pending.question)
-            if not fresh or echoed:
-                note = "repeated · answer was ready" if echoed else \
-                       f"overheard · asked {pending.age_seconds:.0f}s ago"
-                self._deliver("Answering the question", pending.answer, started,
-                              note, "repeat" if echoed else "overheard",
-                              question=pending.question)
-                return
+        self._audio.flush_and_wait()
 
         if not self._audio.has_transcript():
             # Distinguish "nobody has spoken" from "the capture is broken". They
@@ -248,8 +228,7 @@ class Trigger:
 
     def _deliver(self, title: str, body: str, started: float, note: str,
                  label: str, question: str = "") -> None:
-        # Only delivered answers enter the history — pre-answers are speculative
-        # and most are never served.
+        # Delivered answers enter the history, so the next question has context.
         if self._audio is not None:
             self._audio.record_delivered(body, question)
         spoken, printed = split_answer(body)

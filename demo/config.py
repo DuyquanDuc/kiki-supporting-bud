@@ -107,9 +107,6 @@ ANSWER_FOCUS_SECONDS = 40
 # and, more importantly, tell it which questions are already dealt with so it
 # answers only what is new.
 ANSWER_HISTORY = 3
-# A pre-computed answer older than this is stale — the meeting has moved on, so
-# the button answers live instead of replaying a dead question.
-PENDING_ANSWER_TTL = 45
 
 # --- Reference documents ---------------------------------------------------
 # .txt and .md files in DOCS_DIR, sent whole with every answer. Re-read on each
@@ -123,8 +120,7 @@ DOCS_MAX_CHARS = int(os.getenv("DOCS_MAX_CHARS", "20000"))
 # --- Trigger ---------------------------------------------------------------
 # Two answer buttons, deliberately different jobs.
 #
-#   F9  — what was SAID. Transcript only, no screen. Instant when the audio loop
-#         already pre-answered the question it overheard.
+#   F9  — what was SAID. Transcript only, no screen.
 #   F10 — what was said AND what is SHOWN. Sends the actual screenshot, so it can
 #         read detail the screen loop's summary never captured. Costs a vision
 #         round trip. With no transcript yet it is simply "read the screen".

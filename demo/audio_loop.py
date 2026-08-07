@@ -1,4 +1,4 @@
-"""Background meeting-audio loop: capture, chunk, transcribe, pre-answer.
+"""Background meeting-audio loop: capture, chunk, transcribe.
 
 Loop 2 of the three in docs/architecture.md. Listens on **two** sources at once
 and merges them into one rolling 15-minute transcript, tagged by who spoke:
@@ -12,13 +12,12 @@ you through. And they fail independently: a machine where Stereo Mix is disabled
 still has a working mic, so one dead source degrades the transcript instead of
 killing it.
 
-The important part is what happens *after* transcription. When a chunk contains
-a question, this loop immediately composes the answer in the background. By the
-time you press the button the answer is already sitting in a variable.
-
-That is the same trade the screen loop makes: do the work before the button.
-Without it, F9 on a spoken question would mean transcribe-then-reason at press
-time, which is the four-to-eight-second chain the whole project exists to avoid.
+An earlier version also pre-answered: any chunk that looked like a question got
+an answer composed in the background, ready for an instant press. It was removed.
+The press-time flush transcribes the last ten seconds, and *any* fresh speech
+invalidates a parked answer — so in a live meeting the fast path almost never
+fired, while a model call was spent on every question detected, most never
+served. It also filled the log with "pre-answered ..." for answers nobody heard.
 
 Two gates keep this cheap and honest:
 
@@ -47,36 +46,6 @@ from . import config, docs as documents
 
 THEM = "Them"
 YOU = "You"
-
-# Cheap, no model call. A chunk only earns a pre-answer call if it looks like
-# someone asked something.
-#
-# Transcripts of speech often carry no "?" at all, and meetings here are not
-# necessarily in English — so this covers Vietnamese and Japanese question
-# markers too. A miss is not fatal: the button falls back to answering live off
-# the transcript, it just costs a second.
-_QUESTION_RE = re.compile(
-    r"(\?|？"
-    r"|^(what|why|how|when|where|who|which|can|could|would|should|do|does|"
-    r"did|is|are|was|were|any)\b"
-    r"|\b(thoughts|any idea|what do you think|over to you|your take|"
-    r"walk us through|talk us through)\b"
-    # Vietnamese: interrogatives and sentence-final question particles
-    r"|\b(gì|sao|nào|đâu|ai|bao nhiêu|thế nào|tại sao|khi nào|bao giờ|"
-    r"không|chưa|hả|nhỉ|phải không|đúng không|được không)\b"
-    # Japanese: sentence-final question particle and interrogatives
-    r"|(ですか|ますか|でしょうか|かな)"
-    r"|(なぜ|どう|どこ|だれ|誰|いつ|なに|何|いくら|どれ)"
-    # Corrections. Not questions, but they re-open the previous one: someone
-    # says "no, ETL, not ETA" and the live question is now a different question.
-    # Without these the bot keeps answering the misheard term.
-    r"|^(no|sorry|actually|i mean|i meant)\b"
-    r"|\b(not\s+\w+,\s*\w+|rather than|as in)\b"
-    r"|\b(ý là|ý mình là|không phải|nhầm|đính chính)\b"
-    r"|(じゃなくて|ではなく|すみません、|訂正)"
-    r")",
-    re.IGNORECASE,
-)
 
 _READ_RULE = """SOMETHING TO LOOK AT. A few answers cannot be heard, only read:
 code, a command, an exact identifier or path, a precise string. For those, and
@@ -567,24 +536,6 @@ def _system_prompt(base: str) -> str:
 
 
 @dataclass
-class PendingAnswer:
-    """A question overheard and already answered, waiting for the button."""
-
-    question: str
-    answer: str
-    speaker: str
-    created_at: float
-    # Timestamp of the newest transcript line this answer was built from. If the
-    # transcript has moved past it, the answer predates something that has since
-    # been said, and serving it means answering a question the room already left.
-    transcript_at: float = 0.0
-
-    @property
-    def age_seconds(self) -> float:
-        return time.monotonic() - self.created_at
-
-
-@dataclass
 class Source:
     """One capture device and how it is doing."""
 
@@ -636,7 +587,7 @@ class Source:
 
 
 class AudioLoop:
-    """Owns N capture sources, one transcript, and the pre-answer worker.
+    """Owns N capture sources, one transcript, and the transcription worker.
 
     Not a Thread itself — it supervises one capture thread per source plus a
     single transcription worker, so a dead device takes down its own source and
@@ -658,7 +609,6 @@ class AudioLoop:
         self._halt = threading.Event()
         self._lock = threading.Lock()
         self._transcript: deque[tuple[float, str, str]] = deque()
-        self._pending: PendingAnswer | None = None
         # Bounded on purpose: if transcription falls behind, drop the oldest
         # audio rather than grow a backlog that answers questions from minutes ago.
         self._work: "queue.Queue" = queue.Queue(maxsize=6)
@@ -822,30 +772,6 @@ class AudioLoop:
         with self._lock:
             return bool(self._transcript)
 
-    def take_pending(self) -> PendingAnswer | None:
-        """Hand over the pre-computed answer and clear it.
-
-        Cleared on read so one overheard question is served once. Serving it
-        twice would mean a second press replays a stale answer instead of
-        falling through to a live one.
-        """
-        with self._lock:
-            pending = self._pending
-            if pending is None:
-                return None
-            self._pending = None
-            if pending.age_seconds > config.PENDING_ANSWER_TTL:
-                return None
-            newest = self._transcript[-1][0] if self._transcript else 0.0
-            if newest > pending.transcript_at:
-                # Someone has spoken since this was composed. Falling through to
-                # a live answer costs ~2s and is right; serving this costs 0ms
-                # and answers the wrong thing. This is also exactly why the fast
-                # path still fires when it matters: after a question aimed at
-                # you, the room goes quiet waiting — nothing newer arrives.
-                return None
-            return pending
-
     def flush_and_wait(self, timeout: float = 6.0) -> bool:
         """Transcribe the last few seconds right now, as one clip.
 
@@ -891,22 +817,6 @@ class AudioLoop:
                 self._on_event(f"just said [{label}]: {text[:70]}")
         return bool(lines)
 
-    def tail_echoes(self, question: str, threshold: float = 0.45) -> bool:
-        """Is the just-heard audio a repeat of a question already answered?
-
-        This exists for a deliberate tactic: ask them to say it again. The
-        seconds that buys are exactly what the pre-answer needs, so by the time
-        they finish repeating, the answer is parked and ready.
-
-        Without this the repeat counts as fresh speech, the parked answer is
-        discarded as stale, and the press pays for a full recompute — the tactic
-        would cost time rather than save it.
-        """
-        tail = self._tail_text()
-        if not tail or not question:
-            return False
-        return _overlap(tail, question) >= threshold
-
     def _tail_text(self) -> str:
         if not self._tail:
             return ""
@@ -915,18 +825,16 @@ class AudioLoop:
     def answer_now(self) -> str:
         """Answer live from the transcript, for a press we did not see coming.
 
-        The pre-answer path covers questions the loop recognised. This covers
-        everything else — a question phrased in a way the matcher missed, or you
-        pressing the button just to know what is being discussed.
+        Every press comes through here: flush the last few seconds, then answer
+        from the transcript.
         """
         return self._compose()
 
     def record_delivered(self, answer: str, question: str = "") -> None:
         """Note that this answer actually reached the user.
 
-        Recorded on delivery, not on composition: pre-answers are speculative
-        and most are never served, so recording them would fill the history with
-        questions the user never heard answered.
+        Recorded on delivery so the history holds only what the user actually
+        heard.
         """
         # A parked answer is delivered long after it was composed, by which time
         # _last_query belongs to some later composition — so the caller passes
@@ -1076,7 +984,7 @@ class AudioLoop:
             self._on_event(f"audio [{source.label}] behind — dropped a chunk")
             return False
 
-    # --- transcription + pre-answer ----------------------------------------
+    # --- transcription -----------------------------------------------------
 
     def _transcribe_worker(self) -> None:
         while not self._halt.is_set():
@@ -1100,8 +1008,6 @@ class AudioLoop:
             self.chunks_transcribed += 1
             self.chunks_processed += 1
             self._on_event(f"heard [{label}]: {text[:70]}")
-            if _QUESTION_RE.search(text):
-                self._pre_answer(text, label)
 
     def _to_wav(self, chunk: np.ndarray, samplerate: int) -> io.BytesIO:
         import soundfile as sf
@@ -1120,19 +1026,26 @@ class AudioLoop:
         them sends the answer somewhere else. The model is guessing at letters
         with no context, so give it context.
 
-        Two sources: what the user wrote in profile.md, and what has just been
-        said. Kept short — the API caps this, and a long prompt starts biasing
-        transcription toward words nobody spoke.
+        STATIC ONLY — the user's own notes, never the running transcript.
+
+        Feeding recent transcript lines in here looked obviously right and was a
+        disaster. The API treats `prompt` as preceding context, so the model
+        happily *continues* it: recent lines came back echoed inside the new
+        transcription, which then became the next prompt, which echoed again.
+        Within a minute the transcript was the same sentences rotating and
+        accumulating —
+
+            Them: Hôm qua anh Tuấn gửi cho phần driver của FTOS ấy.
+            Them: ... FTOS ấy. Ừ, xem ở đây thì nó hơi khó ấy ...
+            Them: ... nó hơi khó ấy ... Ở dưới này cái thằng ...
+
+        — and every answer was built on speech nobody said twice.
+
+        profile.md is fixed text, so it biases without compounding. That is what
+        fixed "ETL" being heard as ETA/EPA/ETR, and it needs no transcript.
         """
-        parts = []
         profile = load_profile()
-        if profile:
-            parts.append(profile[:600])
-        with self._lock:
-            tail = [text for _s, _l, text in list(self._transcript)[-3:]]
-        if tail:
-            parts.append(" ".join(tail)[-300:])
-        return "\n".join(parts)[:900]
+        return profile[:900] if profile else ""
 
     def _transcribe(self, chunk: np.ndarray, samplerate: int, label: str) -> str:
         try:
@@ -1151,23 +1064,6 @@ class AudioLoop:
             return ""
         text = response if isinstance(response, str) else getattr(response, "text", "")
         return " ".join(str(text).split())
-
-    def _pre_answer(self, question: str, speaker: str) -> None:
-        """Answer now, in the background, so the button stays instant."""
-        started = time.monotonic()
-        built_from = self._last_stamp()
-        answer = self._compose(question)
-        if not answer or answer.strip().rstrip(".").lower() == "no question asked":
-            return  # the matcher was wrong; do not park a non-answer
-        with self._lock:
-            self._pending = PendingAnswer(
-                question, answer, speaker, time.monotonic(), built_from
-            )
-        elapsed_ms = int((time.monotonic() - started) * 1000)
-        self._on_event(
-            f"pre-answered a question from {speaker} in {elapsed_ms}ms — "
-            "ready for the button"
-        )
 
     def _reference(self, _query: str = "") -> str:
         """The user's documents, whole. Re-read each time so edits are live."""
