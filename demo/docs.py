@@ -15,6 +15,9 @@ Vietnamese, Japanese and English: a question asked in Japanese has to find an
 answer written in an English document, and no amount of keyword matching does
 that.
 
+Plain text and markdown only. Anything else is reported at startup rather than
+silently skipped.
+
 Nothing leaves the machine except the text of chunks that actually get used, and
 the documents themselves stay in demo/data/docs, which is gitignored.
 """
@@ -31,7 +34,11 @@ import numpy as np
 
 from . import config
 
-_TEXT_SUFFIXES = {".txt", ".md", ".markdown", ".csv", ".json", ".yaml", ".yml"}
+# Plain text and markdown only. Everything else — PDF, Word, slides — needs a
+# parser that is a dependency, a failure mode and a source of mangled text, for
+# formats you can convert in seconds. Files with any other suffix are reported
+# at startup rather than silently ignored.
+SUFFIXES = {".txt", ".md", ".markdown"}
 
 
 @dataclass
@@ -40,22 +47,12 @@ class Chunk:
     text: str
 
 
-def _read_pdf(path: Path) -> str:
-    try:
-        from pypdf import PdfReader
-    except ImportError:
-        return ""
-    try:
-        return "\n".join((page.extract_text() or "") for page in PdfReader(str(path)).pages)
-    except Exception:
-        return ""
-
-
 def read_file(path: Path) -> str:
-    if path.suffix.lower() == ".pdf":
-        return _read_pdf(path)
-    if path.suffix.lower() not in _TEXT_SUFFIXES:
+    if path.suffix.lower() not in SUFFIXES:
         return ""
+    # cp932 before latin-1: a Japanese note saved by a Windows editor is far
+    # more likely here than a latin-1 one, and latin-1 never fails, so putting
+    # it earlier would silently turn Japanese into mojibake.
     for encoding in ("utf-8", "utf-8-sig", "cp932", "latin-1"):
         try:
             return path.read_text(encoding=encoding)
@@ -136,28 +133,32 @@ class DocStore:
         directory = config.DOCS_DIR
         if not directory.exists():
             return
-        files = sorted(
-            p for p in directory.iterdir()
-            if p.is_file() and not p.name.startswith(".")
-            and p.suffix.lower() in _TEXT_SUFFIXES | {".pdf"}
-        )
+        present = [
+            p for p in sorted(directory.iterdir())
+            if p.is_file() and not p.name.startswith(".") and p.name != "README.md"
+        ]
+        files = [p for p in present if p.suffix.lower() in SUFFIXES]
+        # Say so rather than ignoring them: a dropped-in PDF that never appears
+        # in an answer looks like the feature is broken.
+        ignored = [p.name for p in present if p.suffix.lower() not in SUFFIXES]
+        if ignored:
+            self._on_event(
+                f"docs: ignoring {', '.join(ignored)} — only .txt and .md are "
+                "read. Save or export as text and it will be picked up."
+            )
         if not files:
             return
 
         chunks: list[Chunk] = []
-        skipped: list[str] = []
+        empty: list[str] = []
         for path in files:
             text = read_file(path)
             if not text.strip():
-                skipped.append(path.name)
+                empty.append(path.name)
                 continue
             chunks.extend(split(text, path.name))
-        if skipped:
-            self._on_event(
-                f"docs: could not read {', '.join(skipped)}"
-                + (" (PDF support needs `pip install pypdf`)"
-                   if any(s.lower().endswith('.pdf') for s in skipped) else "")
-            )
+        if empty:
+            self._on_event(f"docs: {', '.join(empty)} is empty or unreadable")
         if not chunks:
             return
 

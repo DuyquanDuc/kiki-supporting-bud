@@ -8,8 +8,9 @@ cannot possibly infer from the room or the screen.
 passages that actually match a question are ever sent, and only at the moment
 you press.
 
-Supported: `.txt` `.md` `.csv` `.json` `.yaml`, and `.pdf` if you have
-`pip install pypdf`.
+**Only `.txt` and `.md`.** Anything else is reported at startup and skipped —
+export or save it as text first. A PDF or Word file dropped in here will say so
+in the log rather than quietly doing nothing.
 
 Indexed at startup and cached, so a restart with unchanged files costs nothing.
 Edit a file and only that file is re-embedded. The press itself costs one small

@@ -47,7 +47,8 @@ Drop files into `demo/data/docs` before a meeting — a job spec, your CV, an
 architecture note, the agenda, last quarter's numbers. The bot searches them
 when answering.
 
-Supported: `.txt` `.md` `.csv` `.json` `.yaml`, and `.pdf`.
+**Only `.txt` and `.md`.** Anything else is named in the log and skipped, so a
+dropped-in PDF tells you rather than silently never appearing in an answer.
 
 The difference on real questions:
 
