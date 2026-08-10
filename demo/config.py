@@ -17,6 +17,9 @@ PROFILE_FILE = DATA_DIR / "profile.md"
 # Drop reference documents here before a meeting — job spec, CV, architecture
 # note, agenda. Gitignored: these are yours and some of them will be sensitive.
 DOCS_DIR = DATA_DIR / "docs"
+# Minutes and raw transcripts, written when you quit. Gitignored: this is what
+# your colleagues said, and some of it will be about clients.
+MINUTES_DIR = DATA_DIR / "minutes"
 
 load_dotenv(ROOT / ".env")
 
@@ -162,6 +165,13 @@ FLUSH_MIN_SECONDS = 0.7
 # it eats real talking.
 AUDIO_SILENCE_RMS = 0.0015
 TRANSCRIPT_WINDOW_MINUTES = 15
+# Write minutes and the raw transcript on quit. The transcript is saved even if
+# the minutes call fails — it is free, exact, and losing an hour of meeting
+# record to a failed network call would be the worst outcome here.
+MINUTES_ENABLED = os.getenv("MINUTES_ENABLED", "1").strip() == "1"
+# A long meeting can outgrow a sensible prompt. Decisions land late, so the TAIL
+# is kept when the transcript is longer than this.
+MINUTES_MAX_CHARS = int(os.getenv("MINUTES_MAX_CHARS", "60000"))
 # How much transcript the answer call gets to see, total.
 ANSWER_CONTEXT_SECONDS = 180
 # ...of which this much is the part that actually gets answered. Everything

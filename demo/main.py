@@ -31,6 +31,7 @@ from . import audio_loop as audio_loop_mod, config, knowledge, region as region_
 from .audio_loop import AudioLoop
 from .history import History
 from .meter import METER
+from . import minutes
 from .overlay import Overlay
 from .screen_loop import ScreenLoop, ScreenState
 
@@ -584,6 +585,20 @@ def main() -> None:
             speaker.stop()
         hotkeys.stop()
         log("stopped")
+
+        # Written after everything has stopped, so a slow model call cannot hold
+        # up the shutdown the user just asked for.
+        if config.MINUTES_ENABLED and audio is not None:
+            archive = audio.archive()
+            if archive:
+                print("           writing minutes...", flush=True)
+                written = minutes.write(client, archive,
+                                        on_event=lambda m: print(f"           {m}",
+                                                                 flush=True))
+                for kind in ("transcript", "minutes"):
+                    if kind in written:
+                        print(f"           {kind}: {written[kind]}", flush=True)
+
         # Last thing printed, so a session ends by saying what it spent. Printed
         # rather than logged: the history window is already gone by now.
         for line in METER.report():

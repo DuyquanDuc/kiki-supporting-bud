@@ -557,6 +557,9 @@ class AudioLoop:
         self._halt = threading.Event()
         self._lock = threading.Lock()
         self._transcript: deque[tuple[float, str, str]] = deque()
+        # Never pruned. The rolling window above is short so answer prompts stay
+        # small; minutes need the whole meeting.
+        self._archive: list[tuple[float, str, str]] = []
         # Bounded on purpose: if transcription falls behind, drop the oldest
         # audio rather than grow a backlog that answers questions from minutes ago.
         self.chunks_transcribed = 0
@@ -705,6 +708,11 @@ class AudioLoop:
         with self._lock:
             return self._transcript[-1][0] if self._transcript else 0.0
 
+    def archive(self) -> list[tuple[float, str, str]]:
+        """Every line transcribed this session, oldest first."""
+        with self._lock:
+            return list(self._archive)
+
     def has_transcript(self) -> bool:
         with self._lock:
             return bool(self._transcript)
@@ -796,6 +804,12 @@ class AudioLoop:
             now = time.monotonic()
             with self._lock:
                 self._transcript.append((now, source.label, text))
+                # Kept unpruned for the minutes written on quit. The rolling
+                # window above is deliberately short so answer prompts stay
+                # small, but minutes for a two-hour meeting cannot be written
+                # from its last fifteen minutes. Text only — an hour is tens of
+                # kilobytes.
+                self._archive.append((time.time(), source.label, text))
                 cutoff = now - config.TRANSCRIPT_WINDOW_MINUTES * 60
                 while self._transcript and self._transcript[0][0] < cutoff:
                     self._transcript.popleft()

@@ -12,3 +12,6 @@ demo/data/docs/*
 
 # Your own notes — real names, clients, projects. Never commit these.
 demo/data/profile.md
+
+# Meeting minutes and transcripts — what your colleagues said. Never commit.
+demo/data/minutes/
