@@ -590,11 +590,15 @@ def main() -> None:
         # up the shutdown the user just asked for.
         if config.MINUTES_ENABLED and audio is not None:
             archive = audio.archive()
+            # Release the live handle first: the rewrite below replaces that
+            # exact file, and on Windows it is cleaner to not have it open.
+            audio.close_transcript()
             if archive:
                 print("           writing minutes...", flush=True)
                 written = minutes.write(client, archive,
                                         on_event=lambda m: print(f"           {m}",
-                                                                 flush=True))
+                                                                 flush=True),
+                                        transcript_path=audio.transcript_path)
                 for kind in ("transcript", "minutes"):
                     if kind in written:
                         print(f"           {kind}: {written[kind]}", flush=True)

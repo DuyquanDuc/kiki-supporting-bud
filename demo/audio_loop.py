@@ -46,6 +46,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 
@@ -560,6 +561,17 @@ class AudioLoop:
         # Never pruned. The rolling window above is short so answer prompts stay
         # small; minutes need the whole meeting.
         self._archive: list[tuple[float, str, str]] = []
+        # The archive also goes to disk line by line. Holding a meeting in
+        # memory until quit means a crash, a dead battery or a closed laptop
+        # loses all of it — and the transcript is the one artefact that cannot
+        # be regenerated.
+        self._transcript_path: Path | None = None
+        self._transcript_file = None
+        self._transcript_broken = False
+        # Both capture threads flush independently, so the file needs its own
+        # lock — two of them opening it at once would leak a handle and
+        # interleave a line.
+        self._disk_lock = threading.Lock()
         # Bounded on purpose: if transcription falls behind, drop the oldest
         # audio rather than grow a backlog that answers questions from minutes ago.
         self.chunks_transcribed = 0
@@ -708,6 +720,52 @@ class AudioLoop:
         with self._lock:
             return self._transcript[-1][0] if self._transcript else 0.0
 
+    @property
+    def transcript_path(self):
+        """Where the live transcript is being written, or None."""
+        return self._transcript_path
+
+    def _append_to_disk(self, entry: tuple[float, str, str]) -> None:
+        """Append one line and flush it. Never raises into the capture path.
+
+        Flushed per line on purpose: buffering would defeat the point, since the
+        lines at risk are the ones written just before whatever killed the app.
+        """
+        if not config.MINUTES_ENABLED or self._transcript_broken:
+            return
+        stamp, label, text = entry
+        with self._disk_lock:
+            try:
+                if self._transcript_file is None:
+                    config.MINUTES_DIR.mkdir(parents=True, exist_ok=True)
+                    # The same stamp minutes.py derives from the first archived
+                    # line, so the file opened here IS the one rewritten on
+                    # quit — not a second copy beside it.
+                    name = time.strftime("%Y-%m-%d_%H%M", time.localtime(stamp))
+                    self._transcript_path = config.MINUTES_DIR / f"{name}-transcript.txt"
+                    self._transcript_file = self._transcript_path.open(
+                        "a", encoding="utf-8", buffering=1
+                    )
+                    self._on_event(f"saving transcript to {self._transcript_path}")
+                clock = time.strftime("%H:%M:%S", time.localtime(stamp))
+                self._transcript_file.write(f"[{clock}] {label}: {text}\n")
+                self._transcript_file.flush()
+            except Exception as exc:
+                # Said once, then silence — a full disk must not flood the log
+                # or stop the meeting being answered.
+                self._transcript_broken = True
+                self._on_event(f"transcript NOT being saved: {exc}")
+
+    def close_transcript(self) -> None:
+        """Release the handle so the quit-time rewrite can replace the file."""
+        with self._disk_lock:
+            if self._transcript_file is not None:
+                try:
+                    self._transcript_file.close()
+                except Exception:
+                    pass
+                self._transcript_file = None
+
     def archive(self) -> list[tuple[float, str, str]]:
         """Every line transcribed this session, oldest first."""
         with self._lock:
@@ -809,10 +867,15 @@ class AudioLoop:
                 # small, but minutes for a two-hour meeting cannot be written
                 # from its last fifteen minutes. Text only — an hour is tens of
                 # kilobytes.
-                self._archive.append((time.time(), source.label, text))
+                stamped = (time.time(), source.label, text)
+                self._archive.append(stamped)
                 cutoff = now - config.TRANSCRIPT_WINDOW_MINUTES * 60
                 while self._transcript and self._transcript[0][0] < cutoff:
                     self._transcript.popleft()
+            # Outside the lock: this touches the disk, and the answer buttons
+            # read the transcript on the keyboard thread. A slow write must not
+            # stall an answer.
+            self._append_to_disk(stamped)
             self.chunks_transcribed += 1
             got = True
             # Not truncated. This is the transcript itself now, not a preview of

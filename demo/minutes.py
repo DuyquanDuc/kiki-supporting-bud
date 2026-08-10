@@ -10,6 +10,12 @@ fails, so a session never ends with nothing. The minutes are a model's reading
 of that transcript — useful, and wrong often enough that the raw text has to
 survive next to it.
 
+The transcript does not wait for the quit, either. The audio loop appends and
+flushes each line as it is transcribed, so the file on disk is current at every
+moment of the meeting; what happens here on quit is a rewrite of that same path
+from the in-memory archive. A crash, a flat battery or a closed lid therefore
+costs you nothing but the minutes, which the transcript lets you regenerate.
+
 Both go to demo/data/minutes, which is gitignored: this is what your colleagues
 said, and some of it will be about clients.
 """
@@ -70,12 +76,18 @@ def transcript_text(archive: list[tuple[float, str, str]]) -> str:
     return "\n".join(lines)
 
 
-def write(client, archive: list[tuple[float, str, str]], on_event=None) -> dict:
+def write(client, archive: list[tuple[float, str, str]], on_event=None,
+          transcript_path: Path | None = None) -> dict:
     """Save the transcript, then the minutes. Returns the paths written.
 
     The transcript is saved FIRST and unconditionally. Generating minutes is a
     network call at the moment the user is quitting, and losing an hour of
     meeting record because that call failed would be the worst bug in this file.
+
+    The audio loop has already been appending to `transcript_path` line by line
+    all meeting, so this rewrite is a belt-and-braces pass rather than the only
+    save: same path, same format, written whole from the archive. It repairs a
+    file that was half-written when something went wrong mid-line.
     """
     note = on_event or (lambda _m: None)
     if not archive:
@@ -92,7 +104,8 @@ def write(client, archive: list[tuple[float, str, str]], on_event=None) -> dict:
 
     written: dict = {}
     raw = transcript_text(archive)
-    transcript_path = directory / f"{stamp}-transcript.txt"
+    if transcript_path is None:
+        transcript_path = directory / f"{stamp}-transcript.txt"
     try:
         transcript_path.write_text(raw, encoding="utf-8")
         written["transcript"] = transcript_path
