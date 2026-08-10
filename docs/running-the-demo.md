@@ -207,10 +207,19 @@ saved to `demo/data/region.json` and reused. `--pick-region` redraws it.
 
 | Key | Does |
 |---|---|
-| **F9** | What was **said** — transcript only, blind to the screen |
+| **F9** | The last question, answered as a cue — transcript only, blind to the screen |
+| **F11** | The same question, answered **in depth** — one spoken line, detail to read |
 | **F10** | What was said **and** what's shown — sends the real screenshot |
-| **F8** | Reminder to re-pick the region |
-| **F12** | Quit |
+| **F8** | **Where things stand** — the meeting so far, in points |
+| **F7** | Hide/show the history window |
+| **F12** | Quit (or Ctrl+C in the terminal) |
+
+F11 and F8 both speak one line and print the rest, because 150 words at 1.75x is
+half a minute of talking over a live meeting. Read the detail in the history
+window; the spoken line always stands alone if you do not.
+
+The capture region is chosen at startup — restart with `--pick-region` to
+change it.
 
 ### F9 — answer the last question
 

@@ -153,6 +153,42 @@ button costs.
 Answer in the language the question was asked in, both parts. Keep technical
 terms in the form they were spoken."""
 
+# F8. Not a question at all — the whole meeting so far.
+_SUMMARY_PROMPT = f"""The user has been in this meeting a while and wants to see where things
+stand. You get the transcript, tagged by speaker: "{THEM}:" is other people,
+"{YOU}:" is the user themselves.
+
+This is NOT a question to answer. Summarise the conversation.
+
+SHAPE. One sentence above a line containing only ---, then bullets below it.
+
+The spoken sentence is the single most important thing to know right now — the
+decision taken, the blocker, or what the room is waiting on the user for. If
+nothing stands out, say what the meeting is about in one line.
+
+Below the marker, "- " bullets, at most seven, newest concerns first. Each is
+one line. Cover only what was actually said:
+
+- decisions and who owns them
+- numbers, dates and deadlines exactly as stated
+- open questions and disagreements still unresolved
+- anything the user personally agreed to or was asked for
+
+Drop pleasantries, tangents and thinking-aloud. A bullet nobody would act on
+should not be there. If the transcript is too thin to summarise, say so in one
+line and stop — do not pad.
+
+Never invent a decision, a name, a number or a commitment. Where the transcript
+is garbled, say what was unclear rather than guessing. Attribute to the user
+only what the "{YOU}:" lines actually say.
+
+"{THEM}" and "{YOU}" are internal labels, not names — never write them. Refer to
+the user as "you", or the natural equivalent in the language you are writing in,
+and to everyone else by the names they were called in the transcript.
+
+Write in the language the meeting is mostly in. Keep technical terms and
+project names exactly as spoken."""
+
 # F10. Same job with the actual pixels.
 _FULL_PROMPT = f"""The user is in a meeting and needs help right now. You get a screenshot of
 their screen and a transcript of what was said, tagged "{THEM}:" (other
@@ -778,6 +814,40 @@ class AudioLoop:
         speech can start while any code block is still generating.
         """
         return self._compose("", on_spoken)
+
+    def summarize(self, on_spoken=None) -> str:
+        """F8. The whole meeting so far, in points.
+
+        Deliberately reads the FULL transcript window rather than the
+        background/focus split the answer buttons use: those exist to find the
+        last question, and this one is not answering a question.
+        """
+        transcript = self.recent(config.TRANSCRIPT_WINDOW_MINUTES * 60)
+        if not transcript.strip():
+            return ""
+        parts = []
+        reference = self._reference(transcript[-2000:])
+        if reference:
+            parts.append(
+                "REFERENCE MATERIAL — the user's own documents, for names and "
+                "context. Do not summarise these; they are not the meeting:\n"
+                + reference
+            )
+        parts.append(f"TRANSCRIPT OF THE MEETING SO FAR:\n{transcript}")
+        parts.append("Summarise where things stand.")
+        try:
+            text, usage = self._answer_call(
+                [
+                    {"role": "system", "content": _system_prompt(_SUMMARY_PROMPT)},
+                    {"role": "user", "content": "\n\n".join(parts)},
+                ],
+                on_spoken=on_spoken,
+            )
+            METER.answered(usage)
+            return text.strip()
+        except Exception as exc:
+            self._fail_global(f"summary failed: {exc}")
+            return ""
 
     def answer_detailed(self, on_spoken=None) -> str:
         """F11. Same question and grounding as F9, but depth below the marker.

@@ -12,7 +12,7 @@ Two answer buttons, deliberately different jobs:
     F11  the same question as F9, answered in depth. One spoken sentence, then
          the detail below the --- marker to be read rather than listened to.
 
-F8 re-picks the capture region, F12 quits. Answers are spoken to your pinned
+F8 summarises the meeting so far in points, F12 quits. Answers are spoken to your pinned
 output device and mirrored to a private overlay.
 
 """
@@ -137,6 +137,10 @@ class Trigger:
         """F11 — the same question as F9, answered in depth."""
         self._dispatch(self._run_detail)
 
+    def fire_summary(self) -> None:
+        """F8 — the whole meeting so far, in points."""
+        self._dispatch(self._run_summary)
+
     def _early_speaker(self, started: float):
         """A callback that speaks the moment the spoken sentence is complete.
 
@@ -173,6 +177,27 @@ class Trigger:
 
     def _run_detail(self) -> None:
         self._run_audio(detailed=True)
+
+    def _run_summary(self) -> None:
+        """Not a question — where the whole conversation stands."""
+        started = time.perf_counter()
+        if self._audio is None:
+            self._emit("Not listening", "The audio loop is off, so there is "
+                       "nothing to summarise.", "", False)
+            return
+        self._audio.flush_and_wait()
+        if not self._audio.has_transcript():
+            self._emit("Nothing to summarise", "No speech captured yet.", "", False,
+                       spoken="Nothing to summarise yet.")
+            return
+        spoken_early = self._early_speaker(started)
+        text = self._audio.summarize(on_spoken=spoken_early)
+        if text:
+            self._deliver("Where things stand", text, started, "summary", "summary",
+                          already_spoken=bool(spoken_early.fired))
+        else:
+            self._emit("Summary failed", "Could not summarise the transcript.",
+                       "", False)
 
     def _run_audio(self, detailed: bool = False) -> None:
         started = time.perf_counter()
@@ -493,10 +518,6 @@ def main() -> None:
             speaker.stop()
         root.quit()
 
-    def repick() -> None:
-        log("re-pick region: restart with --pick-region")
-        _events.put(("answer", "Re-pick region", "Run with --pick-region to reselect.", "", False))
-
     from pynput import keyboard as kb
 
     # A plain Listener with explicit matching, NOT GlobalHotKeys. The latter
@@ -509,7 +530,7 @@ def main() -> None:
         (config.HOTKEY_AUDIO, trigger.fire_audio),
         (config.HOTKEY_FULL, trigger.fire_full),
         (config.HOTKEY_DETAIL, trigger.fire_detail),
-        (config.HOTKEY_REGION, repick),
+        (config.HOTKEY_SUMMARY, trigger.fire_summary),
         (config.HOTKEY_HISTORY, lambda: root.after(0, history.toggle)),
         (config.HOTKEY_QUIT, lambda: root.after(0, quit_all)),
     ):
@@ -532,6 +553,7 @@ def main() -> None:
         f"ready — {key(config.HOTKEY_AUDIO)} what was said, "
         f"{key(config.HOTKEY_FULL)} said + screen, "
         f"{key(config.HOTKEY_DETAIL)} in detail, "
+        f"{key(config.HOTKEY_SUMMARY)} summary, "
         f"{key(config.HOTKEY_QUIT)} quit (or Ctrl+C here)"
     )
     if not actions:

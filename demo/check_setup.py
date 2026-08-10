@@ -388,7 +388,7 @@ def keys(seconds: float = 30.0) -> None:
     for spec, label in (
         (config.HOTKEY_AUDIO, "F9 answer"),
         (config.HOTKEY_FULL, "F10 screen"),
-        (config.HOTKEY_REGION, "F8 region"),
+        (config.HOTKEY_SUMMARY, "F8 summary"),
         (config.HOTKEY_QUIT, "F12 quit"),
     ):
         key = getattr(kb.Key, spec.strip("<>").lower(), None)
@@ -409,7 +409,7 @@ def keys(seconds: float = 30.0) -> None:
     listener.start()
 
     print(f"\n  Configured: {config.HOTKEY_AUDIO} {config.HOTKEY_FULL} "
-          f"{config.HOTKEY_REGION} {config.HOTKEY_QUIT}")
+          f"{config.HOTKEY_SUMMARY} {config.HOTKEY_QUIT}")
     print(f"  PRESS F9, F10, F8 and F12 now — {int(seconds)}s. Ctrl+C to stop.\n")
     try:
         time.sleep(seconds)

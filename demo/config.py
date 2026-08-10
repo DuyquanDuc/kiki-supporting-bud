@@ -222,7 +222,9 @@ HOTKEY_FULL = os.getenv("HOTKEY_FULL", "<f10>").strip()
 # one-line cue; the detail goes below the --- marker to be READ, because 150
 # words at 1.75x is half a minute of talking over a live meeting.
 HOTKEY_DETAIL = os.getenv("HOTKEY_DETAIL", "<f11>").strip()
-HOTKEY_REGION = os.getenv("HOTKEY_REGION", "<f8>").strip()
+# F8 — the whole meeting so far, in points. Took over this key from a re-pick
+# reminder that only ever told you to restart with --pick-region.
+HOTKEY_SUMMARY = os.getenv("HOTKEY_SUMMARY", "<f8>").strip()
 # Show/hide the history window without quitting.
 HOTKEY_HISTORY = os.getenv("HOTKEY_HISTORY", "<f7>").strip()
 HOTKEY_QUIT = os.getenv("HOTKEY_QUIT", "<f12>").strip()
