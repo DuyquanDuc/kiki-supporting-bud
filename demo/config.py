@@ -218,6 +218,10 @@ DOCS_MAX_CHARS = int(os.getenv("DOCS_MAX_CHARS", "20000"))
 # are optional. Rarely-contested picks: pause, scroll_lock, insert, f13-f24.
 HOTKEY_AUDIO = os.getenv("HOTKEY_AUDIO", "<f9>").strip()
 HOTKEY_FULL = os.getenv("HOTKEY_FULL", "<f10>").strip()
+# F11 — the same question as F9, answered in depth. The spoken half stays a
+# one-line cue; the detail goes below the --- marker to be READ, because 150
+# words at 1.75x is half a minute of talking over a live meeting.
+HOTKEY_DETAIL = os.getenv("HOTKEY_DETAIL", "<f11>").strip()
 HOTKEY_REGION = os.getenv("HOTKEY_REGION", "<f8>").strip()
 # Show/hide the history window without quitting.
 HOTKEY_HISTORY = os.getenv("HOTKEY_HISTORY", "<f7>").strip()

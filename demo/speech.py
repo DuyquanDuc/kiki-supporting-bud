@@ -11,6 +11,7 @@ Two things make this usable in a live meeting:
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 
@@ -46,9 +47,21 @@ def resolve_device(substring: str) -> int | None:
     return None
 
 
+def _plain(text: str) -> str:
+    """Drop markup a voice would read out as punctuation.
+
+    The detailed answer writes `Comparable` and **must** because the same string
+    is also printed — but spoken, a backtick becomes an audible stumble. Strip
+    them from the spoken copy only; the printed one keeps its formatting.
+    """
+    text = re.sub(r"```[a-zA-Z]*", " ", text)
+    text = re.sub(r"[`*_#]+", "", text)
+    return text
+
+
 def shorten(text: str, limit: int = config.TTS_MAX_CHARS) -> str:
     """Speech gets talked over. Cut at a sentence boundary if there is one."""
-    text = " ".join(text.split())
+    text = " ".join(_plain(text).split())
     if len(text) <= limit:
         return text
     cut = text[:limit]

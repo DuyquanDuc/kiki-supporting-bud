@@ -9,6 +9,8 @@ Two answer buttons, deliberately different jobs:
     F10  what was said AND what is shown. Sends the real screenshot, so it reads
          detail the screen loop's one-line summary never recorded. Costs a
          vision round trip. With no transcript yet it is just "read the screen".
+    F11  the same question as F9, answered in depth. One spoken sentence, then
+         the detail below the --- marker to be read rather than listened to.
 
 F8 re-picks the capture region, F12 quits. Answers are spoken to your pinned
 output device and mirrored to a private overlay.
@@ -131,6 +133,10 @@ class Trigger:
         """F10 — what was said and what is shown, with the real screenshot."""
         self._dispatch(self._run_full)
 
+    def fire_detail(self) -> None:
+        """F11 — the same question as F9, answered in depth."""
+        self._dispatch(self._run_detail)
+
     def _early_speaker(self, started: float):
         """A callback that speaks the moment the spoken sentence is complete.
 
@@ -165,7 +171,10 @@ class Trigger:
 
     # --- F9: audio only ----------------------------------------------------
 
-    def _run_audio(self) -> None:
+    def _run_detail(self) -> None:
+        self._run_audio(detailed=True)
+
+    def _run_audio(self, detailed: bool = False) -> None:
         started = time.perf_counter()
         if self._audio is None:
             self._emit("Not listening", "The audio loop is off — F10 reads the screen.", "", False)
@@ -199,10 +208,15 @@ class Trigger:
             return
 
         spoken_early = self._early_speaker(started)
-        live = self._audio.answer_now(on_spoken=spoken_early)
+        if detailed:
+            live = self._audio.answer_detailed(on_spoken=spoken_early)
+            title, note, label = "In detail", "detailed", "detail"
+        else:
+            live = self._audio.answer_now(on_spoken=spoken_early)
+            title, note, label = "From the room", "live from transcript", "live transcript"
         if live:
-            self._deliver("From the room", live, started, "live from transcript",
-                          "live transcript", already_spoken=bool(spoken_early.fired))
+            self._deliver(title, live, started, note, label,
+                          already_spoken=bool(spoken_early.fired))
         else:
             self._emit("Answer failed", "Could not answer from the transcript.", "", False)
 
@@ -494,6 +508,7 @@ def main() -> None:
     for spec, action in (
         (config.HOTKEY_AUDIO, trigger.fire_audio),
         (config.HOTKEY_FULL, trigger.fire_full),
+        (config.HOTKEY_DETAIL, trigger.fire_detail),
         (config.HOTKEY_REGION, repick),
         (config.HOTKEY_HISTORY, lambda: root.after(0, history.toggle)),
         (config.HOTKEY_QUIT, lambda: root.after(0, quit_all)),
@@ -516,6 +531,7 @@ def main() -> None:
     log(
         f"ready — {key(config.HOTKEY_AUDIO)} what was said, "
         f"{key(config.HOTKEY_FULL)} said + screen, "
+        f"{key(config.HOTKEY_DETAIL)} in detail, "
         f"{key(config.HOTKEY_QUIT)} quit (or Ctrl+C here)"
     )
     if not actions:

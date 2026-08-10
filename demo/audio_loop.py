@@ -88,15 +88,12 @@ containing only ---, then the thing to read. Below --- is printed, never
 spoken, exempt from the length rule — the smallest complete thing, not a
 tutorial. Ordinary answers never get a --- block."""
 
-# F9. Deliberately blind to the screen: mixing in screen context made it answer
-# questions nobody asked. Every behaviour in here was added against a measured
-# failure — trim with care, but keep it lean: this rides on every press, and at
-# one point the accumulated rules hit ~2,500 tokens of system prompt.
-_ANSWER_PROMPT = f"""Someone in a meeting just asked a question out loud and the user needs the
-answer in their ear immediately. You get a transcript tagged by speaker:
-"{THEM}:" is other people, "{YOU}:" is the user — treat those as their own
-words, so never tell them what they just said or contradict them without
-reason. You cannot see their screen.
+# Everything about WHICH question to answer and what may be trusted. Shared, so
+# the short and detailed buttons can never disagree about what was asked — only
+# about how much to say.
+_CONTEXT_RULES = f"""You get a transcript tagged by speaker: "{THEM}:" is other people, "{YOU}:"
+is the user — treat those as their own words, so never tell them what they just
+said or contradict them without reason.
 
 ANSWER THE FINAL QUESTION ONLY. JUST SAID may hold several questions asked
 seconds apart; the earlier ones are context, not work — never merge them into
@@ -116,10 +113,45 @@ Current state, not a history.
 
 Ground everything in the transcript and the reference material. Never invent a
 figure, a name, or a commitment on the user's behalf. If what is needed is
-missing, say in a few words what is missing — and if it would be on the
-screen, say "check the screen" so they know to press the other button.
+missing, say what is missing — and if it would be on the screen, say "check the
+screen" so they know to press the other button."""
+
+# F9. Deliberately blind to the screen: mixing in screen context made it answer
+# questions nobody asked. Every behaviour in here was added against a measured
+# failure — trim with care, but keep it lean: this rides on every press.
+_ANSWER_PROMPT = f"""Someone in a meeting just asked a question out loud and the user needs the
+answer in their ear immediately. You cannot see their screen.
+
+{_CONTEXT_RULES}
 
 {_CUE_RULES}"""
+
+# F11. Same question, same grounding, but the user has asked for depth.
+_DETAIL_PROMPT = f"""Someone in a meeting asked a question and the user wants the full answer, not
+the one-line cue. You cannot see their screen.
+
+{_CONTEXT_RULES}
+
+SHAPE OF THE REPLY. Two parts, split by a line containing only ---.
+
+Above the marker: ONE sentence, 15-25 words, that is spoken aloud. It has to
+stand alone, because the user may act on it without reading further. Front-load
+the answer exactly as the short button would.
+
+Below the marker: the detail, which is READ, not spoken. This is where depth
+belongs — 80-150 words. Use short paragraphs or "- " bullets. Include the
+things a cue has to drop: the why, the trade-off, the exception, the concrete
+number or example, the thing that bites people. Code, commands and exact
+identifiers go here too.
+
+Depth is not padding. No restating the question, no "in summary", no
+definitions of terms the user obviously knows — they are an engineer in a
+meeting about their own project. If the honest answer is short, let it be
+short; a thin answer stretched to fill the space wastes the seconds this
+button costs.
+
+Answer in the language the question was asked in, both parts. Keep technical
+terms in the form they were spoken."""
 
 # F10. Same job with the actual pixels.
 _FULL_PROMPT = f"""The user is in a meeting and needs help right now. You get a screenshot of
@@ -747,6 +779,16 @@ class AudioLoop:
         """
         return self._compose("", on_spoken)
 
+    def answer_detailed(self, on_spoken=None) -> str:
+        """F11. Same question and grounding as F9, but depth below the marker.
+
+        The spoken half stays a cue — a 150-word answer read aloud at 1.75x is
+        half a minute of talking over a live meeting. Depth goes under --- to be
+        read, which is also why on_spoken fires early: the sentence is done long
+        before the detail finishes generating.
+        """
+        return self._compose("", on_spoken, prompt=_DETAIL_PROMPT)
+
     def record_delivered(self, answer: str, question: str = "") -> None:
         """Note that this answer actually reached the user.
 
@@ -1089,7 +1131,7 @@ class AudioLoop:
             self._on_event(f"docs: could not read: {exc}")
             return ""
 
-    def _compose(self, question: str = "", on_spoken=None) -> str:
+    def _compose(self, question: str = "", on_spoken=None, prompt=None) -> str:
         """Transcript -> one spoken-length answer. No screen, by design.
 
         `question` is the line the matcher flagged. Passing it explicitly matters:
@@ -1131,7 +1173,7 @@ class AudioLoop:
         try:
             text, usage = self._answer_call(
                 [
-                    {"role": "system", "content": _system_prompt(_ANSWER_PROMPT)},
+                    {"role": "system", "content": _system_prompt(prompt or _ANSWER_PROMPT)},
                     {"role": "user", "content": "\n\n".join(parts)},
                 ],
                 on_spoken=on_spoken,
