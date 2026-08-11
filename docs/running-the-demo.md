@@ -107,6 +107,93 @@ Because you only listen and never repeat these, politeness forms are dropped as
 wasted breath: no Vietnamese pronouns or `dạ`/`ạ` (they carry status the bot has
 no business guessing), and Japanese stays compact rather than reaching for 敬語.
 
+## Speaking without the API (local TTS)
+
+**This is the single biggest speed setting in the app, and it is a Windows
+install detail the repo cannot carry.** The same code is fast on one laptop and
+~1750ms slower on another with nothing on screen to say why.
+
+Spoken answers go through Windows' own voices when one matches the answer's
+language. Measured on this project: the whole clip synthesises in 56-264ms
+against ~1800ms to the paid API's *first byte*. It is not a quality compromise
+on the measure that matters — round-tripped back through transcription the
+local voices scored 1.00 for English and Japanese against 0.99 and 0.94 for the
+paid model. They sound more robotic, but this is a cue you hear once and never
+repeat, so intelligibility is the whole job.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install pywin32   # required, or it all goes to the API
+.\.venv\Scripts\python.exe -m demo.check_setup
+```
+
+```
+[  ok  ] local voices for: en, ja
+[  ok  ]    en: local, 264ms for the whole clip
+[  ok  ]    ja: local, 216ms for the whole clip
+[ warn ]    vi: no voice -> falls back to the API
+```
+
+Each language falls back on its own. A missing Vietnamese voice costs you
+~1750ms on Vietnamese answers only; English and Japanese stay fast. Nothing
+breaks — `LOCAL_TTS=1` is safe to leave on across every machine, because a
+missing voice, a missing pywin32 or a synthesis error all fall through to the
+API automatically.
+
+### The catch: Windows has two voice registries
+
+**Installing a voice through Settings does not necessarily make it visible to
+this app.** Windows keeps SAPI5 voices and "OneCore" voices in separate places,
+`Settings > Speech` installs into OneCore, and the app reads SAPI5. So a voice
+you just installed can be entirely invisible while Windows itself happily uses
+it.
+
+Check both:
+
+```powershell
+Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Speech\Voices\Tokens" | % PSChildName
+Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Speech_OneCore\Voices\Tokens" | % PSChildName
+```
+
+On the development machine those return:
+
+```
+SAPI5    TTS_MS_EN-US_DAVID_11.0, TTS_MS_EN-US_ZIRA_11.0, TTS_MS_JA-JP_HARUKA_11.0
+OneCore  ...DavidM, MarkM, ZiraM, AyumiM, HarukaM, IchiroM, SayakaM, viVN_An
+```
+
+A Vietnamese voice (`MSTTS_V110_viVN_An`) and three extra Japanese voices are
+installed and unreachable — which is exactly why `check_setup` reports
+`vi: no voice` on a machine that has one.
+
+The fix is to copy the voice's token key from the OneCore hive to the SAPI5
+hive with `regedit` (run as Administrator, export a backup first). It is a
+registry edit on your own machine, so weigh it accordingly; the app works
+without it and simply pays the API round trip on that language.
+
+To install voices in the first place: `Settings > Time & Language > Speech >
+Manage voices > Add voices`. Installing a full **language pack** rather than
+just the speech voice is more likely to register on both hives.
+
+### Speech-to-**text** is not local
+
+Transcription always goes to the network — Groq first, OpenAI as the fallback.
+There is no local STT in this project and no setting to enable one.
+
+That is a deliberate trade, not an oversight. Groq's `whisper-large-v3-turbo`
+returns in ~650-900ms for a 11-16s clip (see `demo.bench`), and matching that
+on CPU means running whisper locally at several times realtime, which a laptop
+without a discrete GPU will not do at large-v3 quality. Smaller local models are
+fast enough but lose exactly what this app needs most: Japanese accuracy and
+proper nouns.
+
+If you want to try anyway, the shape of the change is small — `_transcribe()`
+in `demo/audio_loop.py` is the only place audio meets a model, and it already
+has a two-provider fallback chain to extend. `faster-whisper` (CTranslate2) is
+the usual choice, and with a CUDA GPU `large-v3-turbo` is genuinely competitive.
+Benchmark it against the current route with `python -m demo.bench` before
+switching: the transcribe leg is ~40% of a press, so a regression there is felt
+on every button.
+
 ## Making it hear the meeting
 
 The bot listens on **two** sources and merges them into one speaker-tagged

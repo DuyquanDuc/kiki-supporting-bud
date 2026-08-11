@@ -61,10 +61,23 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m demo.main            # F9 / F10 to ask, F12 to quit
 ```
 
-One caveat that will cost you a meeting if you skip it: Windows ships Stereo Mix
-*disabled but still enumerated*, so it looks connected and captures nothing.
-`check_setup` plays a test tone to prove otherwise — see
-[docs/running-the-demo.md](docs/running-the-demo.md#making-it-hear-the-meeting).
+Two per-machine settings live outside the repo and will not travel with a clone.
+Both are covered by `check_setup`, and both cost you something real if skipped:
+
+1. **Loopback capture.** Windows ships Stereo Mix *disabled but still
+   enumerated*, so it looks connected and captures nothing. `check_setup` plays
+   a test tone to prove otherwise —
+   [making it hear the meeting](docs/running-the-demo.md#making-it-hear-the-meeting).
+2. **Local voices.** Speech falls back to the API without them, costing
+   ~1750ms before you hear anything, on every press. Needs `pywin32` and a
+   Windows voice for each language you work in — and a voice installed through
+   Settings is often invisible to the app, which
+   [speaking without the API](docs/running-the-demo.md#speaking-without-the-api-local-tts)
+   explains how to spot and fix.
+
+Transcription is always a network call (Groq, falling back to OpenAI). There is
+no local speech-to-text, and the same doc covers why and what changing it would
+take.
 
 Running cost lands around **$1 to $2 per hour-long meeting**.
 
