@@ -29,6 +29,13 @@ same reason.
 THE FIRST CALL TO EVERY PROVIDER IS DISCARDED. Cold TLS to Groq measured 1959ms
 against 617ms warm on the identical question — benchmarking it produces a
 number that describes a handshake, not a model.
+
+BACK-TO-BACK RUNS THROTTLE A FREE TIER, and the result looks exactly like a slow
+model. Measuring llama-3.1-8b in a tight loop gave 12.9s and a 325-11619ms
+spread; the same model at 25s between calls answered in 333-487ms. Nothing here
+is slow enough to trip it at `--runs 3`, but if a Groq leg suddenly reports
+seconds, space the calls out before believing it — that number is a rate limit
+wearing a model's name.
 """
 
 from __future__ import annotations
