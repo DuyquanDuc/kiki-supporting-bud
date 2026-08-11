@@ -156,6 +156,18 @@ BACKGROUND_TRANSCRIBE_SECONDS = float(os.getenv("BACKGROUND_TRANSCRIBE_SECONDS",
 # at default on the same question — small, but it is spent on every press.
 # "minimal" is rejected by this model. Sent only if the model accepts it.
 ANSWER_EFFORT = os.getenv("ANSWER_EFFORT", "low").strip()
+# The F6 model, served by Groq. Their catalogue was measured end to end on the
+# real prompt: gpt-oss-120b answered all six test questions correctly in both
+# languages, gpt-oss-20b claimed py-spy takes heap snapshots and invented a
+# TwinCAT work history for the user, llama-3.3-70b answered CPU-bound
+# parallelism with "use async", and qwen3.6-27b leaked its raw <think> block
+# into what would have been spoken aloud. 120b is the only one of them worth
+# putting in your ear.
+#
+# Vision is NOT available here — every Groq model except qwen rejects an image
+# outright, so F10 stays on the main model whatever this is set to.
+FAST_MODEL = os.getenv("FAST_MODEL", "openai/gpt-oss-120b").strip()
+FAST_EFFORT = os.getenv("FAST_EFFORT", "low").strip()
 # Below this much buffered audio there is nothing worth a call.
 FLUSH_MIN_SECONDS = 0.7
 # Mean RMS (float32, 0-1) below which a chunk counts as silence and is dropped
@@ -235,6 +247,19 @@ HOTKEY_DETAIL = os.getenv("HOTKEY_DETAIL", "<f11>").strip()
 # F8 — the whole meeting so far, in points. Took over this key from a re-pick
 # reminder that only ever told you to restart with --pick-region.
 HOTKEY_SUMMARY = os.getenv("HOTKEY_SUMMARY", "<f8>").strip()
+# F6 — the same question as F9, answered by the fast model instead. Measured
+# 532ms to first token against luna's 1215ms on general technical questions,
+# and 459ms against 2050ms on Japanese, because luna spends ~130 reasoning
+# tokens before it says anything and the fast model spends ~35.
+#
+# That restraint is the point of luna and why it stays on F9: asked a question
+# aimed at the user ("単価は九万八千円のままで大丈夫でしょうか"), luna reports
+# that an answer is needed while gpt-oss-120b replies 「はい…問題ありません」—
+# committing the user to a price nobody agreed. Use F6 where being a second
+# late costs more than being wrong: general technical questions, interviews,
+# anything the model can answer from its own knowledge rather than from what
+# was actually said in the room.
+HOTKEY_FAST = os.getenv("HOTKEY_FAST", "<f6>").strip()
 # Show/hide the history window without quitting.
 HOTKEY_HISTORY = os.getenv("HOTKEY_HISTORY", "<f7>").strip()
 HOTKEY_QUIT = os.getenv("HOTKEY_QUIT", "<f12>").strip()

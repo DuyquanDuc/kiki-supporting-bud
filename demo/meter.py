@@ -39,6 +39,12 @@ class Meter:
     answer_in: int = 0
     answer_out: int = 0
 
+    # F6, on Groq's free tier — kept apart from the billed answer counters for
+    # the same reason groq_calls is kept apart from transcribe_calls.
+    fast_calls: int = 0
+    fast_in: int = 0
+    fast_out: int = 0
+
     vision_calls: int = 0
     vision_in: int = 0
     vision_out: int = 0
@@ -57,12 +63,18 @@ class Meter:
                 self.transcribe_calls += 1
                 self.transcribe_seconds += max(0.0, seconds)
 
-    def answered(self, usage, vision: bool = False) -> None:
+    def answered(self, usage, vision: bool = False, free: bool = False) -> None:
         """Record token usage from a chat response. Tolerates a missing usage."""
         prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
         completion = int(getattr(usage, "completion_tokens", 0) or 0)
         with self.lock:
-            if vision:
+            if free:
+                # F6 on Groq's free tier. Counted, but never billed — pricing it
+                # at the OpenAI rate would invent a cost the user never paid.
+                self.fast_calls += 1
+                self.fast_in += prompt
+                self.fast_out += completion
+            elif vision:
                 self.vision_calls += 1
                 self.vision_in += prompt
                 self.vision_out += completion
@@ -96,6 +108,7 @@ class Meter:
             t_calls, t_secs = self.transcribe_calls, self.transcribe_seconds
             g_calls, g_secs = self.groq_calls, self.groq_seconds
             a_calls, a_in, a_out = self.answer_calls, self.answer_in, self.answer_out
+            f_calls, f_in, f_out = self.fast_calls, self.fast_in, self.fast_out
             v_calls, v_in, v_out = self.vision_calls, self.vision_in, self.vision_out
             s_calls, s_chars = self.tts_calls, self.tts_chars
         cost = self.costs()
@@ -121,6 +134,11 @@ class Meter:
                 f"  answers     {a_calls:>4} calls  {a_in:>7,} in / {a_out:,} out"
                 f"   ${cost['answer']:.3f}"
             )
+        if f_calls:
+            lines.append(
+                f"  fast (F6)   {f_calls:>4} calls  {f_in:>7,} in / {f_out:,} out"
+                f"   free (groq)"
+            )
         if v_calls:
             lines.append(
                 f"  screen      {v_calls:>4} calls  {v_in:>7,} in / {v_out:,} out"
@@ -131,7 +149,7 @@ class Meter:
                 f"  speech      {s_calls:>4} calls  {s_chars:>7,} chars"
                 f"          ${cost['speech']:.3f}"
             )
-        if not (t_calls or g_calls or a_calls or v_calls or s_calls):
+        if not (t_calls or g_calls or a_calls or f_calls or v_calls or s_calls):
             lines.append("  nothing was sent this session")
             return lines
 
