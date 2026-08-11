@@ -1,124 +1,109 @@
 {
   "measured": {
-    "at": "2026-08-11 13:35",
+    "at": "2026-08-11 13:44",
     "machine": "LAPTOP-OIBO8VC1",
     "os": "Windows 10",
     "runs_per_leg": 3,
     "answer_model": "gpt-5.6-luna",
     "answer_effort": "low",
-    "fast_model": "openai/gpt-oss-120b",
     "transcribe": "whisper-large-v3-turbo",
     "tts_speed": 1.75,
     "vision_detail": "high"
   },
   "en": {
     "transcribe": {
-      "median": 532.3357004672289,
-      "min": 517.3095995560288,
-      "max": 544.9282992631197,
+      "median": 762.2330999001861,
+      "min": 519.1126000136137,
+      "max": 802.2483997046947,
       "n": 3,
       "clip_seconds": 15.79170068027211,
       "heard": "It's a real tech codec, and the pricing question came up again. Do we hold the unit price at 98,000 yen for the second batch, or does the volume discount apply from unit 50? The customer wants an answer before Friday."
     },
     "f9": {
-      "median": 773.8687004894018,
-      "min": 669.4013997912407,
-      "max": 1314.5735999569297,
+      "median": 893.3697007596493,
+      "min": 845.7978004589677,
+      "max": 1691.6881995275617,
       "n": 3,
-      "said": "The transcript doesn’t establish the discount threshold; check the pricing sheet to confirm whether it starts at unit 50."
-    },
-    "f6_general": {
-      "median": 1015.6685002148151,
-      "min": 862.7495002001524,
-      "max": 1090.0491997599602,
-      "n": 3,
-      "said": "GIL means only one thread runs Python code at a time, so CPU‑bound work sees no speedup; use multiprocessing or C extensions."
+      "said": "Does the volume discount start at unit 50, or should the second batch remain at 98,000 yen per unit?"
     },
     "f9_general": {
-      "median": 856.5664999186993,
-      "min": 767.6518997177482,
-      "max": 966.5052006021142,
+      "median": 858.3425004035234,
+      "min": 760.4815000668168,
+      "max": 911.6499004885554,
       "n": 3,
-      "said": "It means only one thread executes Python bytecode at a time, so use multiprocessing or native code that releases the GIL for CPU-bound work."
+      "said": "Python’s GIL allows only one thread to execute Python bytecode at once, so use multiprocessing or native extensions that release it for CPU-bound work."
     },
     "f11": {
-      "median": 1720.4403998330235,
-      "min": 1330.0345996394753,
-      "max": 2168.0586002767086,
+      "median": 1653.9454003795981,
+      "min": 1515.4868997633457,
+      "max": 1825.971500016749,
       "n": 3,
-      "said": "I can’t determine whether the unit price remains 98,000 yen or discounts from unit 50 without the agreed pricing terms; check the quote or screen."
+      "said": "We cannot determine whether the 98,000-yen price holds or the volume discount starts at unit 50 from the information provided."
     },
     "f10": {
-      "median": 2051.1098001152277,
-      "min": 1990.1985004544258,
-      "max": 3320.5269994214177,
+      "median": 2562.7648001536727,
+      "min": 2355.3342996165156,
+      "max": 2901.0303001850843,
       "n": 3,
-      "said": "Count the three regions after removing x; choose y in any region larger than half, because blue can capture that component.",
+      "said": "Find node x, count its left and right subtrees, then choose y from the largest remaining region; you win if it exceeds half.",
       "prompt_tokens": 2481
     },
     "speak": {
-      "median": 245.498800650239,
-      "min": 226.80220007896423,
-      "max": 254.9827005714178,
+      "median": 215.63389990478754,
+      "min": 215.6234998255968,
+      "max": 225.7014000788331,
       "n": 3,
-      "playback_seconds": 4.786167800453515,
-      "to_last_sound": 5149.143700487912
+      "playback_seconds": 4.569387755102041,
+      "to_last_sound": 4889.706599526107
     },
-    "press_to_first_word": 1551.7032016068697
+    "press_to_first_word": 1871.2367005646229
   },
   "ja": {
     "transcribe": {
-      "median": 654.8354001715779,
-      "min": 649.2967996746302,
-      "max": 760.3607000783086,
+      "median": 769.1243998706341,
+      "min": 705.3616996854544,
+      "max": 772.4842000752687,
       "n": 3,
       "clip_seconds": 10.760226757369615,
-      "heard": "設置きょうか。 設置場所の件ですが、来週の金曜日までに仕様を送っていただけますか。 それと、単価は98,000円のままで大丈夫でしょうか。 単価は98,000円のままで大丈夫でしょうか。"
+      "heard": "設置きままし、設置場所の件ですが、来週の金曜日までに使用を送っていただけますか。 それと、単価は9万8000円のままで大丈夫でしょうか。 設置場所の件ですが、来週の金曜日までに使用を送っていただけますか。 それと、単価は9万8000円のままで大丈夫でしょうか。"
     },
     "f9": {
-      "median": 2171.731900423765,
-      "min": 2044.7655003517866,
-      "max": 2212.196600623429,
+      "median": 1912.5581001862884,
+      "min": 861.2013999372721,
+      "max": 2020.3157998621464,
       "n": 3,
-      "said": "設置場所の仕様を来週金曜までに送れるか、単価九万八千円でよいか、どちらも確認が必要です。"
-    },
-    "f6_general": {
-      "median": 700.6753999739885,
-      "min": 491.1077003926039,
-      "max": 755.3946003317833,
-      "n": 3,
-      "said": "継承はIS‑A関係で再利用、コンポジションはHAS‑Aで柔軟、まずコンポジションを優先し、必要なら継承を使います。"
+      "said": "設置仕様を来週金曜までに送れるか、単価九万八千円でよいかは未確認なので、画面で確認してください。"
     },
     "f9_general": {
-      "median": 1128.6260997876525,
-      "min": 723.6359007656574,
-      "max": 1439.2300993204117,
+      "median": 905.549000017345,
+      "min": 846.5571003034711,
+      "max": 961.2298998981714,
       "n": 3,
-      "said": "継承は「is-a」の関係で機能を引き継ぎ、コンポジションは「has-a」で部品を組み合わせます。  \n再利用性と柔軟性の面から、通常はコンポジションを優先します。"
+      "said": "継承は「is-a」、コンポジションは「has-a」の関係で、再利用にはコンポジションを優先し、継承は明確なサブタイプ関係に限定します。"
     },
     "f11": {
-      "median": 2250.699100084603,
-      "min": 2130.538900382817,
-      "max": 2802.7651999145746,
+      "median": 2378.3549005165696,
+      "min": 2160.465399734676,
+      "max": 2854.3857000768185,
       "n": 3,
-      "said": "設置場所の仕様を来週金曜日までに送れるか、単価九万八千円のままでよいか、確認を求められています。"
+      "said": "単価を九万八千円のままとしてよいかは、この記録だけでは判断できないため、見積書または契約条件を確認してください。"
     },
     "f10": {
-      "median": 2761.800699867308,
-      "min": 2497.5423999130726,
-      "max": 3353.563700802624,
+      "median": 4317.8232004866,
+      "min": 2955.947800539434,
+      "max": 4937.339999713004,
       "n": 3,
-      "said": "x を削除した三つの領域の最大サイズが n/2 を超えれば、その領域の y を選んで勝てます。",
+      "said": "x を除いた三つの連結成分の大きさを調べ、最大成分が n の半分を超えれば、そこを y に選んで勝てます。",
       "prompt_tokens": 2484
     },
     "speak": {
-      "median": 226.4322992414236,
-      "min": 225.4686001688242,
-      "max": 235.1369997486472,
+      "median": 244.59159933030605,
+      "min": 236.08959931880236,
+      "max": 245.74599973857403,
       "n": 3,
-      "playback_seconds": 5.661768707482993,
-      "to_last_sound": 5991.211099550128
+      "playback_seconds": 5.980907029478458,
+      "to_last_sound": 6318.674699403346
     },
-    "press_to_first_word": 3052.9995998367667
+    "press_to_first_word": 2926.2740993872285
   }
 }

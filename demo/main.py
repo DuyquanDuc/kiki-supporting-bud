@@ -142,10 +142,6 @@ class Trigger:
         """F8 — the whole meeting so far, in points."""
         self._dispatch(self._run_summary)
 
-    def fire_fast(self) -> None:
-        """F6 — the same question as F9, answered by the fast model."""
-        self._dispatch(self._run_fast)
-
     def _early_speaker(self, started: float):
         """A callback that speaks the moment the spoken sentence is complete.
 
@@ -183,9 +179,6 @@ class Trigger:
     def _run_detail(self) -> None:
         self._run_audio(detailed=True)
 
-    def _run_fast(self) -> None:
-        self._run_audio(fast=True)
-
     def _run_summary(self) -> None:
         """Not a question — where the whole conversation stands."""
         started = time.perf_counter()
@@ -207,7 +200,7 @@ class Trigger:
             self._emit("Summary failed", "Could not summarise the transcript.",
                        "", False)
 
-    def _run_audio(self, detailed: bool = False, fast: bool = False) -> None:
+    def _run_audio(self, detailed: bool = False) -> None:
         started = time.perf_counter()
         if self._audio is None:
             self._emit("Not listening", "The audio loop is off — F10 reads the screen.", "", False)
@@ -244,9 +237,6 @@ class Trigger:
         if detailed:
             live = self._audio.answer_detailed(on_spoken=spoken_early)
             title, note, label = "In detail", "detailed", "detail"
-        elif fast:
-            live = self._audio.answer_fast(on_spoken=spoken_early)
-            title, note, label = "Quick answer", "fast model", "fast"
         else:
             live = self._audio.answer_now(on_spoken=spoken_early)
             title, note, label = "From the room", "live from transcript", "live transcript"
@@ -542,7 +532,6 @@ def main() -> None:
         (config.HOTKEY_FULL, trigger.fire_full),
         (config.HOTKEY_DETAIL, trigger.fire_detail),
         (config.HOTKEY_SUMMARY, trigger.fire_summary),
-        (config.HOTKEY_FAST, trigger.fire_fast),
         (config.HOTKEY_HISTORY, lambda: root.after(0, history.toggle)),
         (config.HOTKEY_QUIT, lambda: root.after(0, quit_all)),
     ):
@@ -565,19 +554,9 @@ def main() -> None:
         f"ready — {key(config.HOTKEY_AUDIO)} what was said, "
         f"{key(config.HOTKEY_FULL)} said + screen, "
         f"{key(config.HOTKEY_DETAIL)} in detail, "
-        f"{key(config.HOTKEY_FAST)} quick, "
         f"{key(config.HOTKEY_SUMMARY)} summary, "
         f"{key(config.HOTKEY_QUIT)} quit (or Ctrl+C here)"
     )
-    if audio is not None:
-        if audio.fast_available():
-            log(f"{key(config.HOTKEY_FAST)} answers with {config.FAST_MODEL} — "
-                f"~250ms quicker on general questions, seconds quicker where "
-                f"{config.ANSWER_MODEL} would stop to think, but it will answer "
-                f"a question aimed at you instead of telling you to")
-        else:
-            log(f"{key(config.HOTKEY_FAST)} has no GROQ_API_KEY — it will answer "
-                f"on {config.ANSWER_MODEL}, same as {key(config.HOTKEY_AUDIO)}")
     if not actions:
         log("WARNING: no hotkeys registered — check the HOTKEY_ names in .env")
     if args.offline:

@@ -581,8 +581,8 @@ class AudioLoop:
         # rather than hidden, so a follow-up keeps the context it needs without
         # the answer folding the old questions back in.
         self._flush_lock = threading.Lock()
-        # Per model: F6 and F9 are different models, and one rejecting
-        # reasoning_effort says nothing about the other.
+        # Per model: ANSWER_MODEL and VISION_MODEL can differ, and one
+        # rejecting reasoning_effort says nothing about the other.
         self._no_effort: set[str] = set()
         self._groq_client = None
         self._groq_dead = False
@@ -915,7 +915,7 @@ class AudioLoop:
         parts.append(f"TRANSCRIPT OF THE MEETING SO FAR:\n{transcript}")
         parts.append("Summarise where things stand.")
         try:
-            text, usage, served_fast = self._answer_call(
+            text, usage = self._answer_call(
                 [
                     {"role": "system", "content": _system_prompt(_SUMMARY_PROMPT)},
                     {"role": "user", "content": "\n\n".join(parts)},
@@ -937,19 +937,6 @@ class AudioLoop:
         before the detail finishes generating.
         """
         return self._compose("", on_spoken, prompt=_DETAIL_PROMPT)
-
-    def answer_fast(self, on_spoken=None) -> str:
-        """F6. The same question and grounding as F9, on the fast model.
-
-        Worth roughly a second on English and a second and a half on Japanese,
-        paid for in judgement — see HOTKEY_FAST in config for what that costs.
-        Falls back to the main model when Groq is not configured, so the button
-        always answers something.
-        """
-        return self._compose("", on_spoken, fast=True)
-
-    def fast_available(self) -> bool:
-        return self._groq() is not None
 
     def record_delivered(self, answer: str, question: str = "") -> None:
         """Note that this answer actually reached the user.
@@ -1008,7 +995,7 @@ class AudioLoop:
                 },
             })
         try:
-            text, usage, served_fast = self._answer_call(
+            text, usage = self._answer_call(
                 [
                     {"role": "system", "content": _system_prompt(_FULL_PROMPT)},
                     {"role": "user", "content": content},
@@ -1293,8 +1280,7 @@ class AudioLoop:
             self._on_event(f"docs: could not read: {exc}")
             return ""
 
-    def _compose(self, question: str = "", on_spoken=None, prompt=None,
-                 fast: bool = False) -> str:
+    def _compose(self, question: str = "", on_spoken=None, prompt=None) -> str:
         """Transcript -> one spoken-length answer. No screen, by design.
 
         `question` is the line the matcher flagged. Passing it explicitly matters:
@@ -1334,55 +1320,21 @@ class AudioLoop:
                 "discussed and where it stands."
             )
         try:
-            text, usage, served_fast = self._answer_call(
+            text, usage = self._answer_call(
                 [
                     {"role": "system", "content": _system_prompt(prompt or _ANSWER_PROMPT)},
                     {"role": "user", "content": "\n\n".join(parts)},
                 ],
                 on_spoken=on_spoken,
-                fast=fast,
             )
-            METER.answered(usage, free=served_fast)
+            METER.answered(usage)
             return text.strip()
         except Exception as exc:
             self._fail_global(f"answer failed: {exc}")
             return ""
 
-    def _answer_call(self, messages, model=None, on_spoken=None, fast=False):
-        """Chat call. Returns (text, usage, served_fast).
-
-        `fast` routes to the Groq model on F6 and falls back to the main one on
-        any failure, so a machine with no GROQ_API_KEY simply answers normally
-        rather than losing the button. The one case it does NOT retry is a
-        failure that arrives after speech has already started: a second answer
-        talking over the first is worse than a truncated one.
-
-        `served_fast` says who actually answered, not who was asked. The meter
-        needs the difference — a fallback runs on the billed model, and
-        reporting it as free Groq would quietly understate the session cost.
-        """
-        if fast and self._groq() is not None:
-            spoke = []
-            relay = on_spoken
-            if on_spoken is not None:
-                def relay(text):
-                    spoke.append(True)
-                    on_spoken(text)
-            try:
-                text, usage = self._call_once(self._groq(), config.FAST_MODEL,
-                                              config.FAST_EFFORT, messages, relay)
-                return text, usage, True
-            except Exception as exc:
-                if spoke:
-                    raise
-                self._on_event(f"fast answer failed, using "
-                               f"{config.ANSWER_MODEL}: {str(exc)[:60]}")
-        text, usage = self._call_once(self._client, model or config.ANSWER_MODEL,
-                                      config.ANSWER_EFFORT, messages, on_spoken)
-        return text, usage, False
-
-    def _call_once(self, client, model, effort, messages, on_spoken=None):
-        """One model, one call. Returns (text, usage).
+    def _answer_call(self, messages, model=None, on_spoken=None):
+        """Chat call. Returns (text, usage).
 
         With `on_spoken`, the response is STREAMED and the callback fires with
         the spoken part the moment it is complete — at the --- marker when the
@@ -1393,9 +1345,11 @@ class AudioLoop:
 
         reasoning_effort is retried without on rejection — it is model-specific,
         and a hard failure here means no answer at all. Tracked per model, since
-        F6 and F9 are different models and one rejecting it says nothing about
-        the other.
+        ANSWER_MODEL and VISION_MODEL can differ and one rejecting it says
+        nothing about the other.
         """
+        model = model or config.ANSWER_MODEL
+        effort = config.ANSWER_EFFORT
 
         def create(stream: bool):
             kwargs = {"model": model, "messages": messages}
@@ -1406,7 +1360,7 @@ class AudioLoop:
                 # Without this a streamed response reports no token usage and
                 # the session cost meter goes quietly blind.
                 kwargs["stream_options"] = {"include_usage": True}
-            return client.chat.completions.create(**kwargs)
+            return self._client.chat.completions.create(**kwargs)
 
         def run(stream: bool):
             if not stream:

@@ -210,7 +210,6 @@ saved to `demo/data/region.json` and reused. `--pick-region` redraws it.
 | **F9** | The last question, answered as a cue — transcript only, blind to the screen |
 | **F11** | The same question, answered **in depth** — one spoken line, detail to read |
 | **F10** | What was said **and** what's shown — sends the real screenshot |
-| **F6** | The same question on the **fast model** — quicker, less careful |
 | **F8** | **Where things stand** — the meeting so far, in points |
 | **F7** | Hide/show the history window |
 | **F12** | Quit (or Ctrl+C in the terminal) |
@@ -218,22 +217,6 @@ saved to `demo/data/region.json` and reused. `--pick-region` redraws it.
 F11 and F8 both speak one line and print the rest, because 150 words at 1.75x is
 half a minute of talking over a live meeting. Read the detail in the history
 window; the spoken line always stands alone if you do not.
-
-**F6 is a different model, not a different prompt.** It answers on Groq
-(`gpt-oss-120b` by default) instead of the main model, and what you buy is
-~250ms on questions the main model answers directly, rising to seconds on ones
-where it would stop and think. What you pay is judgement. Measured on the same
-prompt, asked 「単価は九万八千円のままで大丈夫でしょうか」— a question aimed at
-*you* — the main model reports that an answer is needed, while the fast model
-replies 「はい…問題ありません」, committing you to a price nobody agreed.
-
-So: F6 for questions the model can answer from its own knowledge — general
-technical ground, interviews, definitions. F9 for anything that turns on what
-was actually said in the room. F6 falls back to the main model when
-`GROQ_API_KEY` is unset, so it always answers something.
-
-F10 has no fast option: every Groq model except one rejects images outright,
-and that one leaks its raw reasoning into what would be spoken aloud.
 
 ## Measuring the speed
 

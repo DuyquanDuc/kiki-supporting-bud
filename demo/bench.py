@@ -8,11 +8,10 @@ WHAT IT MEASURES. The three legs of a press, separately, because they have
 completely different fixes:
 
     transcribe   audio in the buffer -> text          (Groq, OpenAI fallback)
-    answer       text -> the spoken sentence is ready (F9 / F6 / F11)
+    answer       text -> the spoken sentence is ready (F9 / F11)
     speak        that sentence -> first sound         (SAPI, API fallback)
 
-Plus F10, which replaces the answer leg with a vision call, and is reported
-apart because it cannot use the fast model — no Groq model here accepts images.
+Plus F10, which replaces the answer leg with a vision call.
 
 HOW TO READ IT. The headline is `press -> first word`: the sum of the legs, and
 what you actually wait through before hearing anything. `press -> done talking`
@@ -67,8 +66,10 @@ MEETING = {
           "それと、単価は九万八千円のままで大丈夫でしょうか。",
 }
 
-# General-knowledge questions — the case F6 exists for, where the answer comes
-# from the model rather than from what was said in the room.
+# General-knowledge questions: the answer comes from the model rather than from
+# what was said in the room, and the two cases time differently — the main model
+# reasons before answering a question aimed at the user and does not bother for
+# a definition.
 GENERAL = {
     "en": "Them: Python has a global interpreter lock. What does that actually mean "
           "for a CPU-bound workload, and how would you work around it?",
@@ -211,12 +212,8 @@ class Bench:
 
     def answer(self, kind: str, lang: str, transcripts: dict) -> dict | None:
         """Press -> the spoken sentence is complete. kind: f9 | f6 | f11."""
-        method = {"f9": "answer_now", "f6": "answer_fast",
-                  "f11": "answer_detailed"}[kind]
-        warm = self._loop(transcripts[lang])
-        if kind == "f6" and not warm.fast_available():
-            return None
-        getattr(warm, method)()                 # discarded warm-up
+        method = {"f9": "answer_now", "f11": "answer_detailed"}[kind]
+        getattr(self._loop(transcripts[lang]), method)()   # discarded warm-up
 
         times, said = [], ""
         for _ in range(self.runs):
@@ -337,8 +334,6 @@ def main(argv=None) -> int:
     bench = Bench(args.runs, args.play)
     languages = ("en", "ja") if args.lang == "both" else (args.lang,)
     print(f"answer model {config.ANSWER_MODEL} (effort {config.ANSWER_EFFORT!r})")
-    print(f"fast model   {config.FAST_MODEL}"
-          f"{'' if config.GROQ_API_KEY else '  — NO GROQ_API_KEY, F6 falls back'}")
     print(f"{args.runs} runs per leg, first discarded\n")
 
     # Stamped, because these numbers are only meaningful next to what produced
@@ -351,7 +346,6 @@ def main(argv=None) -> int:
         "runs_per_leg": args.runs,
         "answer_model": config.ANSWER_MODEL,
         "answer_effort": config.ANSWER_EFFORT,
-        "fast_model": config.FAST_MODEL if config.GROQ_API_KEY else None,
         "transcribe": (config.GROQ_TRANSCRIBE_MODEL if config.GROQ_API_KEY
                        else config.TRANSCRIBE_MODEL),
         "tts_speed": config.TTS_SPEED,
@@ -363,7 +357,6 @@ def main(argv=None) -> int:
         out: dict = {}
         out["transcribe"] = bench.transcribe(lang)
         out["f9"] = bench.answer("f9", lang, MEETING)
-        out["f6_general"] = bench.answer("f6", lang, GENERAL)
         out["f9_general"] = bench.answer("f9", lang, GENERAL)
         out["f11"] = bench.answer("f11", lang, MEETING)
         out["f10"] = None if args.skip_vision else bench.vision(lang)
@@ -375,8 +368,6 @@ def main(argv=None) -> int:
                    f"{t['clip_seconds']:.0f}s clip" if t else "no local voice"))
         print(_row("answer  F9 (meeting)", out["f9"], config.ANSWER_MODEL))
         print(_row("answer  F9 (general)", out["f9_general"], config.ANSWER_MODEL))
-        print(_row("answer  F6 (general)", out["f6_general"],
-                   config.FAST_MODEL if out["f6_general"] else "no GROQ_API_KEY"))
         print(_row("answer  F11 (detail)", out["f11"], "spoken cue only"))
         if out["f10"]:
             print(_row("answer  F10 (screen)", out["f10"],
@@ -397,8 +388,6 @@ def main(argv=None) -> int:
             out["press_to_first_word"] = press
         if out["f9"]:
             print(f"\n  F9  said: {out['f9']['said'][:96]}")
-        if out["f6_general"]:
-            print(f"  F6  said: {out['f6_general']['said'][:96]}")
         if out["f10"]:
             print(f"  F10 said: {out['f10']['said'][:96]}")
         print()
