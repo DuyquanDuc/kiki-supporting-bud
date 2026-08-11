@@ -298,12 +298,37 @@ saved to `demo/data/region.json` and reused. `--pick-region` redraws it.
 | **F11** | The same question, answered **in depth** — one spoken line, detail to read |
 | **F10** | What was said **and** what's shown — sends the real screenshot |
 | **F8** | **Where things stand** — the meeting so far, in points |
+| **F4** | Type a **standing request** — changes what the buttons do |
 | **F7** | Hide/show the history window |
 | **F12** | Quit (or Ctrl+C in the terminal) |
 
 F11 and F8 both speak one line and print the rest, because 150 words at 1.75x is
 half a minute of talking over a live meeting. Read the detail in the history
 window; the spoken line always stands alone if you do not.
+
+### Asking for something other than an answer
+
+Not every meeting wants a question answered. **F4** puts the caret in the `ask:`
+box at the bottom of the history window; type an instruction, press **Enter**,
+and it applies to every press until you clear it with **Escape**.
+
+| Typed | What the buttons do then |
+|---|---|
+| *(empty)* | Normal — answer the last question |
+| `Translate what they said into English. Do not answer it.` | Translates instead of answering |
+| `Just give me the number, no explanation.` | 340 units at 98,000 less 12% came back as `29,321,600 yen` |
+| `Reply in Vietnamese regardless of the question language.` | Overrides the per-question language rule |
+
+It overrides the default behaviour but **not** the delivery rules — still one
+spoken line, still `---` before anything meant to be read. It applies to F9, F10
+and F11.
+
+Pressing F4 is the one moment this window takes keyboard focus. It normally
+carries `WS_EX_NOACTIVATE` so clicking it cannot swallow a keystroke during a
+meeting — but a window that cannot be activated cannot receive typing either, so
+the flag is dropped while the box has the caret and restored on Enter or Escape.
+The `ask:` label stays highlighted while a request is active, because a
+forgotten "translate everything" is a confusing five minutes.
 
 ## Measuring the speed
 

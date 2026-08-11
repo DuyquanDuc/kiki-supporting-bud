@@ -237,6 +237,14 @@ HOTKEY_DETAIL = os.getenv("HOTKEY_DETAIL", "<f11>").strip()
 HOTKEY_SUMMARY = os.getenv("HOTKEY_SUMMARY", "<f8>").strip()
 # Show/hide the history window without quitting.
 HOTKEY_HISTORY = os.getenv("HOTKEY_HISTORY", "<f7>").strip()
+# F4 — put the caret in the ask box, for a standing request that changes what
+# the buttons do: "translate to English instead of answering", "just give me
+# the number". Enter applies it, Escape clears it, empty is normal behaviour.
+#
+# Pressing this is the one moment the history window takes keyboard focus.
+# WS_EX_NOACTIVATE is dropped while you type and restored on Enter or Escape,
+# because a window that cannot be activated cannot receive keystrokes either.
+HOTKEY_ASK = os.getenv("HOTKEY_ASK", "<f4>").strip()
 HOTKEY_QUIT = os.getenv("HOTKEY_QUIT", "<f12>").strip()
 
 # --- Overlay ---------------------------------------------------------------

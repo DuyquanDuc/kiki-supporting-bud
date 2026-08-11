@@ -536,7 +536,8 @@ class AudioLoop:
     nothing else.
     """
 
-    def __init__(self, client, sources, is_muted=None, on_event=None):
+    def __init__(self, client, sources, is_muted=None, on_event=None,
+                 instruction=None):
         self._client = client
         self.sources = []
         for label, spec in sources:
@@ -553,6 +554,10 @@ class AudioLoop:
         # A callable, not a value: it changes constantly and the loop must read
         # it at the moment it needs it, not at construction.
         self._is_muted = is_muted or (lambda: False)
+        # A callable for the same reason as is_muted: the user can change the
+        # standing request between presses, and the value must be read at the
+        # moment it is needed rather than captured at construction.
+        self._instruction = instruction or (lambda: "")
         self._on_event = on_event or (lambda _m: None)
 
         self._halt = threading.Event()
@@ -985,6 +990,11 @@ class AudioLoop:
                 "REFERENCE MATERIAL — the user's own documents. Prefer these over "
                 "your own knowledge when they conflict:\n" + reference + "\n\n" + said
             )
+        # F10 honours it too: a translation or calculation request applies just
+        # as much when the screen is in play.
+        request = self._standing_request()
+        if request:
+            said += "\n\n" + request
         content: list[dict] = [{"type": "text", "text": said}]
         if image is not None:
             content.append({
@@ -1280,6 +1290,41 @@ class AudioLoop:
             self._on_event(f"docs: could not read: {exc}")
             return ""
 
+    def set_instruction(self, getter) -> None:
+        """Point the loop at the ask box, which is built after it is.
+
+        A getter rather than a value: the user retypes it between presses.
+        """
+        self._instruction = getter or (lambda: "")
+
+    def _standing_request(self) -> str:
+        """The user's typed request, framed to outrank the default behaviour.
+
+        Placed LAST and stated as an override, because it usually contradicts
+        the instruction directly above it — "translate this" is precisely not
+        "answer the question". Weaker phrasing earlier in the prompt lost to
+        the system prompt's much longer argument for answering.
+
+        Delivery rules are explicitly NOT overridden: this still arrives as one
+        spoken line in a live meeting, whatever the task is.
+        """
+        text = ""
+        try:
+            text = (self._instruction() or "").strip()
+        except Exception:
+            pass
+        if not text:
+            return ""
+        return (
+            "THE USER'S OWN STANDING REQUEST, typed by them just now. It "
+            "OVERRIDES the instruction above: if it asks for something other "
+            "than answering the last question — a translation, a calculation, "
+            "a particular framing — do that instead, and do not also answer the "
+            "question. Keep the delivery rules: one spoken line, their "
+            "language, --- before anything to be read.\n"
+            f"{text}"
+        )
+
     def _compose(self, question: str = "", on_spoken=None, prompt=None) -> str:
         """Transcript -> one spoken-length answer. No screen, by design.
 
@@ -1319,6 +1364,9 @@ class AudioLoop:
                 "If there is no question, catch the user up on what is being "
                 "discussed and where it stands."
             )
+        request = self._standing_request()
+        if request:
+            parts.append(request)
         try:
             text, usage = self._answer_call(
                 [

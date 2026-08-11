@@ -78,6 +78,29 @@ class History:
         )
         self._text.configure(state="disabled")
 
+        # --- the standing-request box ---------------------------------------
+        # A meeting is not always a question to answer. Sometimes what is needed
+        # is a translation, a calculation, or a specific framing, and that
+        # cannot be inferred from the transcript — the user has to say so.
+        self._ask_row = tk.Frame(self._win, bg=_BG)
+        self._ask_row.pack(fill="x", side="bottom")
+        self._ask_label = tk.Label(
+            self._ask_row, text="ask:", bg=_BG, fg=_MUTED,
+            font=("Consolas", 9), padx=8,
+        )
+        self._ask_label.pack(side="left")
+        self._ask = tk.Entry(
+            self._ask_row, bg=_CODE_BG, fg=_FG, font=("Consolas", 10),
+            relief="flat", insertbackground=_FG, highlightthickness=1,
+            highlightbackground=_CODE_BG, highlightcolor=_ANSWER,
+        )
+        self._ask.pack(side="left", fill="x", expand=True, padx=(0, 8), pady=6)
+        self._ask.bind("<Return>", self._commit_ask)
+        self._ask.bind("<Escape>", self._clear_ask)
+        # Plain text, read from the answer threads. Assignment is atomic under
+        # the GIL, so no lock is needed for a single string swap.
+        self._instruction = ""
+
         self._place()
         self._win.update_idletasks()
         self._no_activate()
@@ -100,16 +123,68 @@ class History:
         parent = ctypes.windll.user32.GetParent(hwnd)
         return parent or hwnd
 
-    def _no_activate(self) -> None:
-        """Take clicks and scrolls without stealing focus from the meeting."""
+    def _no_activate(self, on: bool = True) -> None:
+        """Take clicks and scrolls without stealing focus from the meeting.
+
+        Turned OFF briefly while the ask box is being typed into: a window that
+        cannot be activated cannot receive keystrokes either, so the flag that
+        protects the meeting is exactly the flag that would swallow the request.
+        """
         try:
             target = self._target_hwnd()
             style = ctypes.windll.user32.GetWindowLongW(target, _GWL_EXSTYLE)
-            ctypes.windll.user32.SetWindowLongW(
-                target, _GWL_EXSTYLE, style | _WS_EX_NOACTIVATE | _WS_EX_LAYERED
-            )
+            if on:
+                style |= _WS_EX_NOACTIVATE | _WS_EX_LAYERED
+            else:
+                style &= ~_WS_EX_NOACTIVATE
+            ctypes.windll.user32.SetWindowLongW(target, _GWL_EXSTYLE, style)
         except Exception:
             pass  # non-Windows or blocked: the window still works
+
+    # --- the ask box -------------------------------------------------------
+
+    @property
+    def instruction(self) -> str:
+        """The standing request, or "". Read from the answer threads."""
+        return getattr(self, "_instruction", "")
+
+    def focus_ask(self) -> None:
+        """Bring the window up and put the caret in the ask box."""
+        if not self._enabled or self._win is None:
+            return
+        if not self._visible:
+            self._win.deiconify()
+            self._visible = True
+        self._win.lift()
+        self._no_activate(False)
+        try:
+            ctypes.windll.user32.SetForegroundWindow(self._target_hwnd())
+        except Exception:
+            pass
+        self._ask.focus_force()
+        self._ask.select_range(0, "end")
+        self._ask_label.configure(fg=_ANSWER)
+
+    def _release(self) -> None:
+        """Give focus back to the meeting and re-arm the no-activate flag."""
+        self._no_activate(True)
+        self._ask_label.configure(fg=_ANSWER if self.instruction else _MUTED)
+        self._win.lower()
+        self._win.lift()
+
+    def _commit_ask(self, _event=None) -> str:
+        text = self._ask.get().strip()
+        self._instruction = text
+        if text:
+            self._append(f"\nasking for: {text}\n", "muted")
+        else:
+            self._append("\nback to normal answers\n", "muted")
+        self._release()
+        return "break"
+
+    def _clear_ask(self, _event=None) -> str:
+        self._ask.delete(0, "end")
+        return self._commit_ask()
 
     def _hide_from_capture(self) -> None:
         from . import privacy

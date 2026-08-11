@@ -493,6 +493,10 @@ def main() -> None:
     use_history = config.OVERLAY_MODE == "history"
     overlay = Overlay(root, mode="off" if use_history else config.OVERLAY_MODE)
     history = History(root, enabled=use_history)
+    # The ask box lives in the history window, which is built after the audio
+    # loop, so the link is made here rather than at construction.
+    if audio is not None and use_history:
+        audio.set_instruction(lambda: history.instruction)
 
     def pump() -> None:
         try:
@@ -533,6 +537,7 @@ def main() -> None:
         (config.HOTKEY_DETAIL, trigger.fire_detail),
         (config.HOTKEY_SUMMARY, trigger.fire_summary),
         (config.HOTKEY_HISTORY, lambda: root.after(0, history.toggle)),
+        (config.HOTKEY_ASK, lambda: root.after(0, history.focus_ask)),
         (config.HOTKEY_QUIT, lambda: root.after(0, quit_all)),
     ):
         key = getattr(kb.Key, spec.strip("<>").lower(), None)
@@ -555,6 +560,7 @@ def main() -> None:
         f"{key(config.HOTKEY_FULL)} said + screen, "
         f"{key(config.HOTKEY_DETAIL)} in detail, "
         f"{key(config.HOTKEY_SUMMARY)} summary, "
+        f"{key(config.HOTKEY_ASK)} ask, "
         f"{key(config.HOTKEY_QUIT)} quit (or Ctrl+C here)"
     )
     if not actions:
