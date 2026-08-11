@@ -235,6 +235,27 @@ was actually said in the room. F6 falls back to the main model when
 F10 has no fast option: every Groq model except one rejects images outright,
 and that one leaks its raw reasoning into what would be spoken aloud.
 
+## Measuring the speed
+
+```
+python -m demo.bench                  # the standard suite, ~3 minutes
+python -m demo.bench --runs 5 --play  # more samples, and time the playback
+python -m demo.bench --lang ja --skip-vision --runs 2   # quick check
+python -m demo.bench --json out.json  # save, to diff against a later run
+```
+
+Fixed fixtures in English and Japanese, so runs weeks apart are comparable, and
+the first call to every provider is discarded — cold TLS to Groq measured
+1959ms against 617ms warm on the identical question, which would otherwise look
+like a slow model.
+
+`docs/bench-baseline.json` is a saved run to compare against. It records the
+machine and the models alongside the timings, because a latency number without
+them cannot be compared to anything.
+
+**A change under ~150ms is not a result.** The run-to-run range is wider than
+that; treat anything smaller as noise unless it survives `--runs 10`.
+
 The capture region is chosen at startup — restart with `--pick-region` to
 change it.
 
