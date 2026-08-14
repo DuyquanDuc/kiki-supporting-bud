@@ -172,7 +172,29 @@ short; a thin answer stretched to fill the space wastes the seconds this
 button costs.
 
 Answer in the language the question was asked in, both parts. Keep technical
-terms in the form they were spoken."""
+terms in the form they were spoken.
+
+WHEN THE ANSWER IS A PICTURE. Some questions ask for a drawing — "can you draw
+a simple load balancer architecture", "sketch how the retry works". Words alone
+cannot answer those. When a drawing is genuinely what was asked for, add a
+fenced ```image block at the very end, after everything else:
+
+```image
+A clean technical architecture diagram, flat vector style, white background,
+thin black arrows. Three boxes left to right: "Client", "Load balancer",
+and a stack of three "Web server" boxes the load balancer fans out to.
+Label every box exactly as given. No other text.
+```
+
+Write it as a VISUAL description — subject, layout, style, what each label
+says. Name every label you want, and say "no other text" unless you want more,
+because stray invented text is where these drawings go wrong.
+
+Still answer in words as well: the picture takes about half a minute and
+arrives after you have spoken, so the spoken line and the written detail have
+to stand on their own without it. Only include the block when a drawing was
+actually asked for or is obviously the point — never to decorate an answer that
+words already handle."""
 
 # F8. Not a question at all — the whole meeting so far.
 _SUMMARY_PROMPT = f"""The user has been in this meeting a while and wants to see where things

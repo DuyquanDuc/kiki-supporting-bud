@@ -26,8 +26,9 @@ import sys
 import threading
 import time
 import tkinter as tk
+from pathlib import Path
 
-from . import audio_loop as audio_loop_mod, config, knowledge, region as region_mod, speech
+from . import audio_loop as audio_loop_mod, config, illustrate, knowledge, region as region_mod, speech
 from .audio_loop import AudioLoop
 from .history import History
 from .meter import METER
@@ -119,11 +120,14 @@ class Trigger:
         rows: list[dict],
         speaker: speech.Speaker | None,
         audio: AudioLoop | None = None,
+        client=None,
     ):
         self._loop = loop
         self._rows = rows
         self._speaker = speaker
         self._audio = audio
+        # Only for illustrations; every other call goes through the audio loop.
+        self._client = client
         self._busy = threading.Lock()
 
     def fire_audio(self) -> None:
@@ -178,6 +182,21 @@ class Trigger:
 
     def _run_detail(self) -> None:
         self._run_audio(detailed=True)
+
+    def _illustrate(self, prompt: str) -> None:
+        """Draw in the background. NEVER on the press's own thread.
+
+        Generation was measured at ~40s. Blocking the answer on it would undo
+        every latency decision in this project for a picture the user has not
+        even been told about yet.
+        """
+        def work() -> None:
+            path = illustrate.draw(self._client, prompt, on_event=log)
+            if path is not None:
+                _events.put(("image", str(path), prompt[:80], "", False))
+
+        log("drawing an illustration in the background...")
+        threading.Thread(target=work, daemon=True).start()
 
     def _run_summary(self) -> None:
         """Not a question — where the whole conversation stands."""
@@ -304,6 +323,9 @@ class Trigger:
 
     def _deliver(self, title: str, body: str, started: float, note: str,
                  label: str, question: str = "", already_spoken: bool = False) -> None:
+        # An ```image block is a stage direction, not part of the answer: pull
+        # it out before anything reads, prints or speaks the body.
+        image_prompt, body = illustrate.extract(body)
         # Delivered answers enter the history, so the next question has context.
         if self._audio is not None:
             self._audio.record_delivered(body, question)
@@ -316,6 +338,9 @@ class Trigger:
         # cancel the playback already in progress and start over.
         if not already_spoken:
             self._speak(spoken)
+        # Started AFTER the answer is out, so the picture costs the press nothing.
+        if image_prompt:
+            self._illustrate(image_prompt)
 
     def _emit(self, title: str, body: str, meta: str, accent: bool, spoken: str = "") -> None:
         """Show a card if the overlay is on, and always say something.
@@ -484,7 +509,7 @@ def main() -> None:
     elif not config.AUDIO_ENABLED:
         log("audio loop off by config")
 
-    trigger = Trigger(loop, rows, speaker, audio)
+    trigger = Trigger(loop, rows, speaker, audio, client=client)
 
     root = tk.Tk()
     root.withdraw()
@@ -505,6 +530,9 @@ def main() -> None:
                 if kind == "answer":
                     overlay.show(title, body, meta, accent=accent)
                     history.answer(body, meta)
+                elif kind == "image":
+                    # title carries the path, body the prompt it was drawn from.
+                    history.image(Path(title), body)
                 elif kind == "log":
                     heard = _HEARD_RE.match(title)
                     if heard:

@@ -299,12 +299,33 @@ saved to `demo/data/region.json` and reused. `--pick-region` redraws it.
 | **F10** | What was said **and** what's shown — sends the real screenshot |
 | **F8** | **Where things stand** — the meeting so far, in points |
 | **F4** | Type a **standing request** — changes what the buttons do |
+| | *(F11 also draws, on its own judgement — see below)* |
 | **F7** | Hide/show the history window |
 | **F12** | Quit (or Ctrl+C in the terminal) |
 
 F11 and F8 both speak one line and print the rest, because 150 words at 1.75x is
 half a minute of talking over a live meeting. Read the detail in the history
 window; the spoken line always stands alone if you do not.
+
+### When the answer is a picture
+
+Some questions have a shape for an answer — *"can you draw a simple load
+balancer architecture"*, *"sketch how the retry works"*. **F11 decides on its
+own** when a drawing is what was asked for, generates one with `gpt-image-2`,
+and shows it **inside the history window** — the only surface excluded from
+screen capture, so it cannot leak into a share.
+
+It is always asynchronous. Drawing takes 20-40s, so the spoken cue and the
+written answer arrive at their usual speed and the picture follows a while
+later. A press never waits for it, and a failure (no key, a timeout, a refusal)
+is one line in the log rather than a lost answer.
+
+It draws only when asked. Measured on four cases: "draw a load balancer
+architecture" and its Japanese equivalent both produced an image; "what does
+the GIL mean for CPU-bound work" and a question about prices and deadlines both
+correctly produced none.
+
+`IMAGE_ENABLED=0` turns it off. Images land in `demo/data/images`, gitignored.
 
 ### Asking for something other than an answer
 

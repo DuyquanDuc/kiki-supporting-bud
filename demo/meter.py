@@ -46,6 +46,10 @@ class Meter:
     tts_calls: int = 0
     tts_chars: int = 0
 
+    # Illustrations are billed per image, not per token, so they cannot ride
+    # along in the answer counters.
+    image_calls: int = 0
+
     # --- recording ---------------------------------------------------------
 
     def transcribed(self, seconds: float, provider: str = "openai") -> None:
@@ -71,6 +75,10 @@ class Meter:
                 self.answer_in += prompt
                 self.answer_out += completion
 
+    def drew(self, usage=None) -> None:
+        with self.lock:
+            self.image_calls += 1
+
     def spoke(self, text: str) -> None:
         with self.lock:
             self.tts_calls += 1
@@ -87,6 +95,7 @@ class Meter:
                 "vision": (self.vision_in / 1e6) * config.RATE_ANSWER_IN_PER_M
                           + (self.vision_out / 1e6) * config.RATE_ANSWER_OUT_PER_M,
                 "speech": (self.tts_chars / 1e6) * config.RATE_TTS_PER_M_CHARS,
+                "images": self.image_calls * config.RATE_IMAGE_EACH,
             }
 
     def report(self) -> list[str]:
@@ -98,6 +107,7 @@ class Meter:
             a_calls, a_in, a_out = self.answer_calls, self.answer_in, self.answer_out
             v_calls, v_in, v_out = self.vision_calls, self.vision_in, self.vision_out
             s_calls, s_chars = self.tts_calls, self.tts_chars
+            i_calls = self.image_calls
         cost = self.costs()
         total = sum(cost.values())
 
@@ -131,7 +141,12 @@ class Meter:
                 f"  speech      {s_calls:>4} calls  {s_chars:>7,} chars"
                 f"          ${cost['speech']:.3f}"
             )
-        if not (t_calls or g_calls or a_calls or v_calls or s_calls):
+        if i_calls:
+            lines.append(
+                f"  images      {i_calls:>4} drawn"
+                f"                              ${cost['images']:.3f}"
+            )
+        if not (t_calls or g_calls or a_calls or v_calls or s_calls or i_calls):
             lines.append("  nothing was sent this session")
             return lines
 

@@ -223,6 +223,40 @@ class History:
     def heard(self, label: str, text: str) -> None:
         self._append(f"{label}: {text}", "you" if label == "You" else "them")
 
+    def image(self, path, caption: str = "") -> None:
+        """Show a generated illustration inline.
+
+        Inline rather than a link because this window is the only surface that
+        is excluded from screen capture — opening the PNG in a viewer or a
+        browser would put it straight into the share it was drawn during.
+
+        A reference is kept on the widget: tkinter does not own PhotoImage, and
+        an un-referenced one is garbage collected into a blank rectangle.
+        """
+        if not self._enabled or self._win is None:
+            return
+        try:
+            from PIL import Image, ImageTk
+
+            picture = Image.open(path)
+            width = max(200, config.HISTORY_WIDTH - 60)
+            if picture.width > width:
+                height = round(picture.height * width / picture.width)
+                picture = picture.resize((width, height), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(picture)
+            if not hasattr(self, "_photos"):
+                self._photos = []
+            self._photos.append(photo)
+
+            self._text.configure(state="normal")
+            self._text.insert("end", "\n")
+            self._text.image_create("end", image=photo)
+            self._text.insert("end", f"\n{caption or path.name}\n", "muted")
+            self._text.configure(state="disabled")
+            self._text.see("end")
+        except Exception as exc:
+            self.note(f"could not show the illustration ({exc}); saved at {path}")
+
     def note(self, text: str) -> None:
         self._append(text, "muted")
 

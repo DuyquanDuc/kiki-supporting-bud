@@ -15,3 +15,6 @@ demo/data/profile.md
 
 # Meeting minutes and transcripts — what your colleagues said. Never commit.
 demo/data/minutes/
+
+# Illustrations drawn on F11 — drawn from what your meeting was about.
+demo/data/images/

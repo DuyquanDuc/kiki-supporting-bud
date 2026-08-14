@@ -20,6 +20,9 @@ DOCS_DIR = DATA_DIR / "docs"
 # Minutes and raw transcripts, written when you quit. Gitignored: this is what
 # your colleagues said, and some of it will be about clients.
 MINUTES_DIR = DATA_DIR / "minutes"
+# Illustrations drawn on F11. Gitignored: they are drawn from what your
+# meeting was about.
+IMAGE_DIR = DATA_DIR / "images"
 
 load_dotenv(ROOT / ".env")
 
@@ -251,6 +254,23 @@ HOTKEY_QUIT = os.getenv("HOTKEY_QUIT", "<f12>").strip()
 # A line of --- in an answer separates the sentence to hear from the block to
 # read, because code cannot be listened to.
 READ_MARKER = "---"
+
+# --- Illustrations (F11) --------------------------------------------------
+# Some questions have a shape for an answer — "draw a simple load balancer
+# architecture" — and neither a spoken sentence nor a paragraph can answer
+# them. F11 may emit an ```image block and this draws it.
+#
+# ALWAYS ASYNCHRONOUS. Generation measured ~40s, which is unusable inside a
+# press, so the answer is spoken and printed at its normal speed and the
+# picture arrives afterwards. Turning this off costs nothing but the picture.
+IMAGE_ENABLED = os.getenv("IMAGE_ENABLED", "1").strip() == "1"
+IMAGE_MODEL = os.getenv("IMAGE_MODEL", "gpt-image-2").strip()
+# 1536x1024 landscape suits architecture sketches; 1024x1024 and 1024x1536
+# are the other accepted sizes.
+IMAGE_SIZE = os.getenv("IMAGE_SIZE", "1536x1024").strip()
+IMAGE_TIMEOUT = float(os.getenv("IMAGE_TIMEOUT", "180"))
+# Rough, and it is per image rather than per token — check your billing page.
+RATE_IMAGE_EACH = float(os.getenv("RATE_IMAGE_EACH", "0.04"))
 
 # Where answers appear on screen, if anywhere:
 #   history — ONE window, opened at startup, holding the running log of what was
