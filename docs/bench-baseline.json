@@ -1,6 +1,6 @@
 {
   "measured": {
-    "at": "2026-08-11 13:44",
+    "at": "2026-08-14 19:11",
     "machine": "LAPTOP-OIBO8VC1",
     "os": "Windows 10",
     "runs_per_leg": 3,
@@ -12,98 +12,98 @@
   },
   "en": {
     "transcribe": {
-      "median": 762.2330999001861,
-      "min": 519.1126000136137,
-      "max": 802.2483997046947,
+      "median": 507.48150050640106,
+      "min": 466.2509998306632,
+      "max": 574.1725992411375,
       "n": 3,
       "clip_seconds": 15.79170068027211,
       "heard": "It's a real tech codec, and the pricing question came up again. Do we hold the unit price at 98,000 yen for the second batch, or does the volume discount apply from unit 50? The customer wants an answer before Friday."
     },
     "f9": {
-      "median": 893.3697007596493,
-      "min": 845.7978004589677,
-      "max": 1691.6881995275617,
+      "median": 1132.6719000935555,
+      "min": 995.1240997761488,
+      "max": 1265.666799619794,
       "n": 3,
-      "said": "Does the volume discount start at unit 50, or should the second batch remain at 98,000 yen per unit?"
+      "said": "They’re asking you to decide whether batch two stays at 98,000 yen or gets volume pricing from unit 50."
     },
     "f9_general": {
-      "median": 858.3425004035234,
-      "min": 760.4815000668168,
-      "max": 911.6499004885554,
+      "median": 1059.0537004172802,
+      "min": 889.7347999736667,
+      "max": 1073.7532004714012,
       "n": 3,
-      "said": "Python’s GIL allows only one thread to execute Python bytecode at once, so use multiprocessing or native extensions that release it for CPU-bound work."
+      "said": "Python’s GIL limits CPU-bound threads to one executing Python bytecode at a time; use multiprocessing or native extensions that release the GIL."
     },
     "f11": {
-      "median": 1653.9454003795981,
-      "min": 1515.4868997633457,
-      "max": 1825.971500016749,
+      "median": 1549.8043997213244,
+      "min": 1403.9823999628425,
+      "max": 2251.8217992037535,
       "n": 3,
-      "said": "We cannot determine whether the 98,000-yen price holds or the volume discount starts at unit 50 from the information provided."
+      "said": "We need the agreed pricing terms or quotation to determine whether batch two remains ¥98,000 or receives the unit-50 discount."
     },
     "f10": {
-      "median": 2562.7648001536727,
-      "min": 2355.3342996165156,
-      "max": 2901.0303001850843,
+      "median": 2379.2449003085494,
+      "min": 2333.2542004063725,
+      "max": 2541.793500073254,
       "n": 3,
-      "said": "Find node x, count its left and right subtrees, then choose y from the largest remaining region; you win if it exceeds half.",
-      "prompt_tokens": 2481
+      "said": "Count x’s subtree; removing x splits the tree into three regions, and blue wins if any region contains more than half the nodes.",
+      "prompt_tokens": 2774
     },
     "speak": {
-      "median": 215.63389990478754,
-      "min": 215.6234998255968,
-      "max": 225.7014000788331,
+      "median": 225.2693995833397,
+      "min": 215.89509956538677,
+      "max": 255.8679999783635,
       "n": 3,
-      "playback_seconds": 4.569387755102041,
-      "to_last_sound": 4889.706599526107
+      "playback_seconds": 4.41047619047619,
+      "to_last_sound": 4739.308499731123
     },
-    "press_to_first_word": 1871.2367005646229
+    "press_to_first_word": 1865.4228001832962
   },
   "ja": {
     "transcribe": {
-      "median": 769.1243998706341,
-      "min": 705.3616996854544,
-      "max": 772.4842000752687,
+      "median": 888.608600012958,
+      "min": 796.9952002167702,
+      "max": 920.0557004660368,
       "n": 3,
       "clip_seconds": 10.760226757369615,
-      "heard": "設置きままし、設置場所の件ですが、来週の金曜日までに使用を送っていただけますか。 それと、単価は9万8000円のままで大丈夫でしょうか。 設置場所の件ですが、来週の金曜日までに使用を送っていただけますか。 それと、単価は9万8000円のままで大丈夫でしょうか。"
+      "heard": "設置きょうか? 設置場所の件ですが、来週の金曜日までに使用を送っていただけますか? それと、単価は98,000円のままで大丈夫でしょうか?"
     },
     "f9": {
-      "median": 1912.5581001862884,
-      "min": 861.2013999372721,
-      "max": 2020.3157998621464,
+      "median": 1027.6271002367139,
+      "min": 890.0753995403647,
+      "max": 1868.4249995276332,
       "n": 3,
-      "said": "設置仕様を来週金曜までに送れるか、単価九万八千円でよいかは未確認なので、画面で確認してください。"
+      "said": "単価を九万八千円のまま据え置くか、確認を求められています。承認できるか判断が必要です。"
     },
     "f9_general": {
-      "median": 905.549000017345,
-      "min": 846.5571003034711,
-      "max": 961.2298998981714,
+      "median": 1113.4671000763774,
+      "min": 1070.6690000370145,
+      "max": 1167.6987996324897,
       "n": 3,
-      "said": "継承は「is-a」、コンポジションは「has-a」の関係で、再利用にはコンポジションを優先し、継承は明確なサブタイプ関係に限定します。"
+      "said": "継承は「is-a」の関係、コンポジションは「has-a」の関係で、基本的には変更に強いコンポジションを優先します。"
     },
     "f11": {
-      "median": 2378.3549005165696,
-      "min": 2160.465399734676,
-      "max": 2854.3857000768185,
+      "median": 2212.6874001696706,
+      "min": 2204.2343001812696,
+      "max": 2619.297600351274,
       "n": 3,
-      "said": "単価を九万八千円のままとしてよいかは、この記録だけでは判断できないため、見積書または契約条件を確認してください。"
+      "said": "単価九万八千円のままでよいか確認されていますが、こちらでは変更可否を判断できないため、画面の承認状況を確認してください。"
     },
     "f10": {
-      "median": 4317.8232004866,
-      "min": 2955.947800539434,
-      "max": 4937.339999713004,
+      "median": 2879.8676002770662,
+      "min": 2431.1922006309032,
+      "max": 3355.8189999312162,
       "n": 3,
-      "said": "x を除いた三つの連結成分の大きさを調べ、最大成分が n の半分を超えれば、そこを y に選んで勝てます。",
-      "prompt_tokens": 2484
+      "said": "x を切り離した左部分・右部分・親側の三領域の最大サイズが n/2 を超えれば、そこを y に選んで勝てます。",
+      "prompt_tokens": 2777
     },
     "speak": {
-      "median": 244.59159933030605,
-      "min": 236.08959931880236,
-      "max": 245.74599973857403,
+      "median": 230.51919974386692,
+      "min": 225.1137001439929,
+      "max": 265.83029981702566,
       "n": 3,
-      "playback_seconds": 5.980907029478458,
-      "to_last_sound": 6318.674699403346
+      "playback_seconds": 5.625578231292517,
+      "to_last_sound": 5965.627399273217
     },
-    "press_to_first_word": 2926.2740993872285
+    "press_to_first_word": 2146.754899993539
   }
 }
