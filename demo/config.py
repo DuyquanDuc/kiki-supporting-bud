@@ -26,6 +26,31 @@ IMAGE_DIR = DATA_DIR / "images"
 
 load_dotenv(ROOT / ".env")
 
+# Every on/off setting goes through this. A typo used to turn a feature off in
+# silence: `TTS_ENABLED=1heo` is not "1", so speech switched itself off and the
+# only symptom was a bot that logged "speaking at 8297ms" and made no sound.
+# Anything unrecognised now keeps the default and says so on startup.
+FLAG_WARNINGS: list[str] = []
+
+
+def _flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().strip('"').strip("'").lower()
+    if value in ("1", "true", "yes", "on"):
+        return True
+    if value in ("0", "false", "no", "off"):
+        return False
+    if value == "":
+        return default
+    FLAG_WARNINGS.append(
+        f"{name}={raw.strip()!r} is not a yes/no value — "
+        f"keeping the default ({'on' if default else 'off'})"
+    )
+    return default
+
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 
 # Model ids come from the project spec (docs/components.md). They are not
@@ -75,7 +100,7 @@ ANSWER_MODEL = os.getenv("ANSWER_MODEL", VISION_MODEL).strip()
 # diff fires on every head movement and it burns high-detail calls re-describing
 # a webcam ("a webcam view shows part of a person beside white cabinets").
 # Turn it on only if you want the no-model-call fallback path back.
-SCREEN_LOOP_ENABLED = os.getenv("SCREEN_LOOP_ENABLED", "0").strip() == "1"
+SCREEN_LOOP_ENABLED = _flag("SCREEN_LOOP_ENABLED", False)
 # Slides change 20-40 times an hour, so polling is cheap and the diff gate
 # means a static screen costs nothing at all.
 SCREEN_POLL_SECONDS = 2.5
@@ -88,7 +113,7 @@ JPEG_QUALITY = 70
 VISION_DETAIL = "high"
 
 # --- Meeting audio loop ----------------------------------------------------
-AUDIO_ENABLED = os.getenv("AUDIO_ENABLED", "1").strip() == "1"
+AUDIO_ENABLED = _flag("AUDIO_ENABLED", True)
 # Substring match against an INPUT device name. "Stereo Mix" is the system
 # output mix on Realtek hardware — what everyone else in the call is saying.
 # sounddevice 0.5.x exposes no WASAPI loopback flag, so this is the route on
@@ -111,7 +136,7 @@ LOOPBACK_MODE = os.getenv("LOOPBACK_MODE", "auto").strip().lower()
 # transcript tagged "You". Without it the bot hears the meeting talk *at* you and
 # never hears you answer, which is half the conversation it is meant to help with.
 # Blank means the system default recording device.
-MIC_ENABLED = os.getenv("MIC_ENABLED", "1").strip() == "1"
+MIC_ENABLED = _flag("MIC_ENABLED", True)
 MIC_DEVICE = os.getenv("MIC_DEVICE", "").strip()
 # NOTHING is transcribed in the background. Audio accumulates and a button press
 # transcribes the lot in one pass.
@@ -171,7 +196,7 @@ TRANSCRIPT_WINDOW_MINUTES = 15
 # Write minutes and the raw transcript on quit. The transcript is saved even if
 # the minutes call fails — it is free, exact, and losing an hour of meeting
 # record to a failed network call would be the worst outcome here.
-MINUTES_ENABLED = os.getenv("MINUTES_ENABLED", "1").strip() == "1"
+MINUTES_ENABLED = _flag("MINUTES_ENABLED", True)
 # A long meeting can outgrow a sensible prompt. Decisions land late, so the TAIL
 # is kept when the transcript is longer than this.
 MINUTES_MAX_CHARS = int(os.getenv("MINUTES_MAX_CHARS", "60000"))
@@ -204,7 +229,7 @@ RATE_TTS_PER_M_CHARS = float(os.getenv("RATE_TTS_PER_M_CHARS", "15.00"))
 # --- Reference documents ---------------------------------------------------
 # .txt and .md files in DOCS_DIR, sent whole with every answer. Re-read on each
 # press, so a file dropped in mid-meeting is live on the next press.
-DOCS_ENABLED = os.getenv("DOCS_ENABLED", "1").strip() == "1"
+DOCS_ENABLED = _flag("DOCS_ENABLED", True)
 # Not a limit — a warning. Past this the folder is big enough that sending it
 # whole is the wrong design and retrieval would be worth its complexity again.
 # ~20k characters is roughly 5k tokens on every single answer.
@@ -263,7 +288,7 @@ READ_MARKER = "---"
 # ALWAYS ASYNCHRONOUS. Generation measured ~40s, which is unusable inside a
 # press, so the answer is spoken and printed at its normal speed and the
 # picture arrives afterwards. Turning this off costs nothing but the picture.
-IMAGE_ENABLED = os.getenv("IMAGE_ENABLED", "1").strip() == "1"
+IMAGE_ENABLED = _flag("IMAGE_ENABLED", True)
 IMAGE_MODEL = os.getenv("IMAGE_MODEL", "gpt-image-2").strip()
 # 1536x1024 landscape suits architecture sketches; 1024x1024 and 1024x1536
 # are the other accepted sizes.
@@ -292,7 +317,7 @@ if os.getenv("OVERLAY_ENABLED", "").strip() == "0" and not os.getenv("OVERLAY_MO
 # assist, and that collapses the moment you share your screen with the answers
 # sitting on it. Protects windows only; it does nothing about audio leaking
 # through your microphone. See demo/privacy.py.
-HIDE_FROM_CAPTURE = os.getenv("HIDE_FROM_CAPTURE", "1").strip() == "1"
+HIDE_FROM_CAPTURE = _flag("HIDE_FROM_CAPTURE", True)
 OVERLAY_SECONDS = 9
 # Code needs longer on screen than a sentence does. Grows with the line count
 # so a long block is not yanked away mid-read.
@@ -311,7 +336,7 @@ OVERLAY_MARGIN = 28
 
 # --- Speech ----------------------------------------------------------------
 # On by default: the point of this rig is not having to read mid-meeting.
-TTS_ENABLED = os.getenv("TTS_ENABLED", "1").strip() == "1"
+TTS_ENABLED = _flag("TTS_ENABLED", True)
 # Substring match against an output device name. PIN THIS before using it in a
 # real meeting — spoken answers must reach your earbuds and nothing else.
 TTS_DEVICE = os.getenv("TTS_DEVICE", "").strip()
@@ -336,7 +361,7 @@ TTS_SPEED = float(os.getenv("TTS_SPEED", "1.75"))
 #
 # Languages with no local voice (Vietnamese, on a default Windows install) fall
 # through to the API automatically. Set to 0 to always use the API.
-LOCAL_TTS = os.getenv("LOCAL_TTS", "1").strip() == "1"
+LOCAL_TTS = _flag("LOCAL_TTS", True)
 # Spoken answers get truncated to this. Long speech is the failure mode here —
 # your coworker keeps talking over it. Sized to fit the ~45-word answer the
 # screen loop is asked for, plus a CRM line when one matches.

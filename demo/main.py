@@ -408,6 +408,11 @@ def main() -> None:
 
         threading.Thread(target=warm, daemon=True).start()
 
+    # Said before anything else: a mistyped flag silently turns a feature OFF,
+    # and the symptom is a bot that looks healthy and quietly does less.
+    for warning in config.FLAG_WARNINGS:
+        log(f"WARNING: {warning}")
+
     if config.HIDE_FROM_CAPTURE:
         from . import privacy
 
