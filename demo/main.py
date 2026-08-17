@@ -40,7 +40,10 @@ _events: "queue.Queue[tuple]" = queue.Queue()
 
 # `heard [Them]: ...` lines get speaker colouring in the history window; every
 # other log line is plain status.
-_HEARD_RE = re.compile(r"^heard \[(\w+)\](?: \(\d+s\))?: (.*)$", re.DOTALL)
+# The parenthetical carries duration, trigger and transcription time, and has
+# grown twice. Matched loosely on purpose: a tightened pattern silently demoted
+# every heard line to a plain note the last time detail was added to it.
+_HEARD_RE = re.compile(r"^heard \[(\w+)\](?:\s*\([^)]*\))?: (.*)$", re.DOTALL)
 
 
 def log(message: str) -> None:
@@ -497,6 +500,9 @@ def main() -> None:
                 # directly and the mic would hear it out of the speakers —
                 # either way the bot transcribes itself and answers itself.
                 is_muted=(speaker.is_speaking if speaker is not None else None),
+                # Lets the loop recognise our own answer coming back through
+                # loopback, so capture never has to stop.
+                spoken_recently=(speaker.recent if speaker is not None else None),
                 on_event=log,
             )
             audio.start()

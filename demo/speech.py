@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+from collections import deque
 
 from . import config, local_tts
 from .meter import METER
@@ -86,6 +87,10 @@ class Speaker:
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self._spoke_at = 0.0
+        # What we have said lately, so the audio loop can recognise our own
+        # voice coming back through loopback and drop it — instead of going
+        # deaf while we talk and losing whatever was asked over the top.
+        self._said: "deque[tuple[float, str]]" = deque(maxlen=12)
 
     @property
     def device(self) -> int | None:
@@ -97,6 +102,11 @@ class Speaker:
         if thread is not None and thread.is_alive():
             return True
         return time.monotonic() - self._spoke_at < _SPEECH_TAIL_SECONDS
+
+    def recent(self, within: float = 60.0) -> list[str]:
+        """What we said in the last `within` seconds, newest first."""
+        now = time.monotonic()
+        return [t for stamp, t in reversed(self._said) if now - stamp <= within]
 
     def stop(self) -> None:
         self._cancel.set()
@@ -112,6 +122,7 @@ class Speaker:
         cancel = self._cancel
         self._spoke_at = time.monotonic()
         clipped = shorten(text)
+        self._said.append((time.monotonic(), clipped))
         # Only bill what actually goes to the API. Locally synthesised speech
         # is free, and counting it would inflate the session cost report.
         if not (config.LOCAL_TTS and local_tts.speaks(clipped)):

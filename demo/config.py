@@ -370,3 +370,22 @@ TTS_MAX_CHARS = 300
 
 def missing_key() -> bool:
     return not OPENAI_API_KEY or OPENAI_API_KEY.startswith("sk-...")
+
+
+# --- Hearing the room while we talk ----------------------------------------
+# Capture used to STOP while the bot was speaking, because loopback taps the
+# render endpoint and would otherwise transcribe our own answer and start
+# answering it. The cost was brutal and invisible: every press went deaf for
+# the whole answer plus a tail — 5.2s at TTS_SPEED 1.75, 6.3s at 1.25 — and a
+# question asked over the top was not delayed, it was destroyed. In an
+# interview, where the next question lands the moment you stop talking, that is
+# exactly the wrong moment to stop listening.
+#
+# Now capture never stops and our own voice is removed from the TRANSCRIPT
+# instead, by comparing each line against what we actually said. Measured on
+# our own TTS round-tripped through transcription: self-matches scored 0.68-0.97
+# and genuine meeting speech scored 0.04-0.20, so 0.45 sits in the gap with
+# room on both sides.
+CAPTURE_WHILE_SPEAKING = _flag("CAPTURE_WHILE_SPEAKING", True)
+ECHO_THRESHOLD = float(os.getenv("ECHO_THRESHOLD", "0.45"))
+ECHO_WINDOW_SECONDS = float(os.getenv("ECHO_WINDOW_SECONDS", "60"))

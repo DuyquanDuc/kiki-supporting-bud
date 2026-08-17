@@ -56,6 +56,22 @@ from .meter import METER
 THEM = "Them"
 YOU = "You"
 
+
+def _trigrams(text: str) -> set:
+    """Character trigrams. Language-agnostic on purpose: word splitting does not
+    work for Japanese, and this has to catch our own voice in every language."""
+    flat = re.sub(r"\s+", " ", (text or "").lower())
+    return {flat[i:i + 3] for i in range(len(flat) - 2)}
+
+
+def _overlap(a: str, b: str) -> float:
+    """0-1 similarity. Divided by the SMALLER set, so a fragment of what we said
+    still scores high — transcription often catches only part of our answer."""
+    ta, tb = _trigrams(a), _trigrams(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / min(len(ta), len(tb))
+
 _VOICE_RULES = """A cue for ONE listener, never repeated aloud by anyone. Strip the packaging,
 keep the substance — a sharp colleague leaning over, not a textbook.
 
@@ -620,7 +636,7 @@ class AudioLoop:
     """
 
     def __init__(self, client, sources, is_muted=None, on_event=None,
-                 instruction=None):
+                 instruction=None, spoken_recently=None):
         self._client = client
         self.sources = []
         for label, spec in sources:
@@ -641,6 +657,9 @@ class AudioLoop:
         # standing request between presses, and the value must be read at the
         # moment it is needed rather than captured at construction.
         self._instruction = instruction or (lambda: "")
+        # What the bot said lately, for recognising our own voice in the
+        # transcript. Without it we would have to go deaf while speaking.
+        self._spoken_recently = spoken_recently or (lambda: [])
         self._on_event = on_event or (lambda _m: None)
 
         self._halt = threading.Event()
@@ -903,23 +922,43 @@ class AudioLoop:
         # once, or half an utterance goes to each and both come back wrong.
         # The press waits for an in-flight sweep rather than skipping: it needs
         # that text to answer.
+        waited = time.perf_counter()
         if not self._flush_lock.acquire(timeout=timeout):
+            self._on_event(f"press gave up waiting {timeout:.0f}s for a sweep")
             return False
+        blocked_ms = (time.perf_counter() - waited) * 1000
+        if blocked_ms > 200:
+            # A press that waits on an in-flight sweep looks like a slow press,
+            # but the time went to the sweep's API call, not to this one.
+            self._on_event(f"press waited {blocked_ms:.0f}ms for an in-flight sweep")
         try:
-            return self._flush(timeout)
+            return self._flush(timeout, reason="press")
         finally:
             self._flush_lock.release()
 
-    def _flush(self, timeout: float) -> bool:
+    def _flush(self, timeout: float, reason: str = "sweep") -> bool:
         jobs = []
         for source in self.sources:
             if not source.alive:
                 continue
             audio = source.drain(config.FLUSH_MIN_SECONDS)
             if audio is None:
+                with source.buf_lock:
+                    held = source.buf_frames / max(1, source.samplerate)
+                self._on_event(
+                    f"{reason} [{source.label}]: only {held:.1f}s buffered, "
+                    f"under the {config.FLUSH_MIN_SECONDS}s minimum — nothing sent"
+                )
                 continue
-            if float(np.sqrt(np.mean(np.square(audio)))) < source.floor:
-                continue  # nobody spoke; transcribing silence invents text
+            seconds = len(audio) / max(1, source.samplerate)
+            level = float(np.sqrt(np.mean(np.square(audio))))
+            if level < source.floor:
+                # NOTE: this audio has already been drained, so it is now gone.
+                self._on_event(
+                    f"{reason} [{source.label}]: dropped {seconds:.1f}s as silence "
+                    f"(level {level:.5f} < floor {source.floor:.5f})"
+                )
+                continue
             jobs.append((source, audio))
         if not jobs:
             return False
@@ -933,6 +972,7 @@ class AudioLoop:
         def work(index: int, source: Source, audio) -> None:
             results[index] = self._transcribe(audio, source.samplerate, source.label)
 
+        sent_at = time.perf_counter()
         threads = [
             threading.Thread(target=work, args=(i, s, a), daemon=True)
             for i, (s, a) in enumerate(jobs)
@@ -947,6 +987,16 @@ class AudioLoop:
         for (source, audio), text in zip(jobs, results):
             seconds = len(audio) / max(1, source.samplerate)
             source.chunks += 1
+            if not text:
+                continue
+            kept = self._strip_our_own_voice(text)
+            if kept != text:
+                dropped = len(text) - len(kept)
+                self._on_event(
+                    f"filtered {dropped} chars of our own voice [{source.label}]"
+                    + ("" if kept else " — nothing of theirs was in it")
+                )
+                text = kept
             if not text:
                 continue
             now = time.monotonic()
@@ -971,7 +1021,10 @@ class AudioLoop:
             # Not truncated. This is the transcript itself now, not a preview of
             # a 7-second chunk — a press can carry a minute of speech, and
             # clipping it at 70 characters threw most of the meeting away.
-            self._on_event(f"heard [{source.label}] ({seconds:.0f}s): {text}")
+            self._on_event(
+                f"heard [{source.label}] ({seconds:.0f}s, {reason}, "
+                f"transcribed in {(time.perf_counter() - sent_at) * 1000:.0f}ms): {text}"
+            )
         return got
 
     def answer_now(self, on_spoken=None) -> str:
@@ -1165,7 +1218,7 @@ class AudioLoop:
                         continue
                     mono = data.mean(axis=1) if data.ndim > 1 else data
                     mono = mono.astype(np.float32)
-                    if self._is_muted():
+                    if self._is_muted() and not config.CAPTURE_WHILE_SPEAKING:
                         muted_frames += len(mono)
                         continue
                     source.frames += len(mono)
@@ -1379,6 +1432,30 @@ class AudioLoop:
         A getter rather than a value: the user retypes it between presses.
         """
         self._instruction = getter or (lambda: "")
+
+    def _strip_our_own_voice(self, text: str) -> str:
+        """Remove OUR sentences, keep theirs. Loopback taps the render endpoint,
+        so every answer comes straight back in.
+
+        Sentence by sentence, not line by line. One transcription routinely
+        contains our answer AND someone talking over it, and judging the whole
+        line throws their question away with our echo — the exact loss this was
+        meant to prevent.
+        """
+        if not config.CAPTURE_WHILE_SPEAKING or not text:
+            return text
+        try:
+            said = self._spoken_recently()
+        except Exception:
+            return text
+        if not said:
+            return text
+        # Keep the delimiters so what survives still reads as sentences.
+        parts = re.split(r"(?<=[.!?。！？])\s*", text)
+        kept = [p for p in parts
+                if p.strip()
+                and not any(_overlap(p, s) >= config.ECHO_THRESHOLD for s in said)]
+        return " ".join(kept).strip()
 
     def _standing_request(self) -> str:
         """The user's typed request, framed to outrank the default behaviour.
