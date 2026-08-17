@@ -724,6 +724,10 @@ class AudioLoop:
         fast on a machine whose .env has a Groq key, and nothing on screen would
         say why.
         """
+        if config.TRANSCRIBE_PRIMARY != "groq":
+            spare = (f" (fallback: groq {config.GROQ_TRANSCRIBE_MODEL})"
+                     if config.GROQ_API_KEY and not self._groq_dead else "")
+            return f"openai {config.TRANSCRIBE_MODEL}{spare}"
         if config.GROQ_API_KEY and not self._groq_dead:
             return (f"groq {config.GROQ_TRANSCRIBE_MODEL} "
                     f"(fallback: openai {config.TRANSCRIBE_MODEL})")
@@ -982,14 +986,25 @@ class AudioLoop:
                 # digital silence. Requiring the peak to beat the full silence
                 # floor AS WELL discarded genuinely quiet speech whose structure
                 # was obvious — 21s at ratio 1,265,998 with a peak 0.0002 short.
-                # Both tests are needed and neither alone is enough. Level
-                # separates the meeting from an idle microphone (same ratio,
-                # 17x quieter); burstiness separates speech from flat noise
-                # (same level, ratio 1.0).
-                quiet_enough = (loud < config.SPEECH_AUDIBLE_PEAK
-                                or ratio < config.SPEECH_BURST_RATIO)
-                why = (f"peak {loud:.5f} vs {config.SPEECH_AUDIBLE_PEAK}, "
-                       f"burst ratio {ratio:.1f} vs {config.SPEECH_BURST_RATIO}")
+                if config.SPEECH_GATE == "off":
+                    quiet_enough = False
+                    why = ""
+                elif config.SPEECH_GATE == "full":
+                    # Both tests, neither alone enough. Level separates the
+                    # meeting from an idle microphone (same ratio, 17x
+                    # quieter); burstiness separates speech from flat noise
+                    # (same level, ratio 1.0).
+                    quiet_enough = (loud < config.SPEECH_AUDIBLE_PEAK
+                                    or ratio < config.SPEECH_BURST_RATIO)
+                    why = (f"peak {loud:.5f} vs {config.SPEECH_AUDIBLE_PEAK}, "
+                           f"burst ratio {ratio:.1f} vs {config.SPEECH_BURST_RATIO}")
+                else:
+                    # "silence": only refuse what cannot be audio at all. A
+                    # stalled loopback returns exact zeros; anything above that
+                    # gets transcribed, so no real question is ever dropped.
+                    quiet_enough = loud < config.SPEECH_ABSOLUTE_MIN
+                    why = (f"peak {loud:.5f} under {config.SPEECH_ABSOLUTE_MIN} "
+                           f"— digital silence")
             if quiet_enough:
                 # NOTE: this audio has already been drained, so it is now gone.
                 self._on_event(
@@ -1475,7 +1490,7 @@ class AudioLoop:
         the free tier's limits reset and the next press may well succeed.
         """
         vocabulary = self._vocabulary()
-        groq = self._groq()
+        groq = self._groq() if config.TRANSCRIBE_PRIMARY == "groq" else None
 
         if groq is not None:
             try:
@@ -1509,6 +1524,29 @@ class AudioLoop:
             response = self._client.audio.transcriptions.create(**request)
             METER.transcribed(len(chunk) / max(1, samplerate))
         except Exception as exc:
+            # Whichever provider is primary, the OTHER one is the safety net.
+            # Only reached when OpenAI itself failed, so try Groq if it is
+            # configured and was not already the primary.
+            fallback = self._groq() if config.TRANSCRIBE_PRIMARY != "groq" else None
+            if fallback is not None:
+                self._on_event(
+                    f"openai transcription failed, falling back to groq: {str(exc)[:60]}"
+                )
+                try:
+                    request = {
+                        "model": config.GROQ_TRANSCRIBE_MODEL,
+                        "file": self._to_wav(chunk, samplerate),
+                        "response_format": "text",
+                    }
+                    if vocabulary:
+                        request["prompt"] = vocabulary[:config.GROQ_PROMPT_LIMIT]
+                    response = fallback.audio.transcriptions.create(**request)
+                    METER.transcribed(len(chunk) / max(1, samplerate), provider="groq")
+                    text = response if isinstance(response, str) else getattr(response, "text", "")
+                    return " ".join(str(text).split())
+                except Exception as second:
+                    self._fail_global(f"both transcribers failed ({label}): {second}")
+                    return ""
             self._fail_global(f"transcription failed ({label}): {exc}")
             return ""
         text = response if isinstance(response, str) else getattr(response, "text", "")

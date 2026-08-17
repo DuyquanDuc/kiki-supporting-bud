@@ -60,6 +60,23 @@ VISION_MODEL = os.getenv("VISION_MODEL", "gpt-5.6-luna").strip()
 TTS_MODEL = os.getenv("TTS_MODEL", "gpt-4o-mini-tts").strip()
 TTS_VOICE = os.getenv("TTS_VOICE", "alloy").strip()
 TRANSCRIBE_MODEL = os.getenv("TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe").strip()
+# Which provider transcribes FIRST; the other stays as the automatic fallback,
+# so neither being down costs an answer.
+#
+#   openai  gpt-4o-mini-transcribe   1167ms en /  979ms ja   accuracy .77 / .77
+#   groq    whisper-large-v3-turbo    948ms en /  928ms ja   accuracy .76 / .72
+#
+# Measured on the same clips. Groq is ~200ms quicker and free; OpenAI is better
+# on Japanese and does not share Groq's habit of returning fragments when the
+# audio is imperfect.
+#
+# NOT gpt-4o-transcribe, despite the best Japanese score of the four (.98): it
+# returned ENGLISH speech as Vietnamese in 2 of 6 runs through the real path,
+# with the profile as its prompt. A transcript in the wrong language is worse
+# than a slightly less accurate one.
+#
+# And emphatically not whisper-1 — 10.8 SECONDS on Japanese, least accurate.
+TRANSCRIBE_PRIMARY = os.getenv("TRANSCRIBE_PRIMARY", "openai").strip().lower()
 # Transcription only. With a Groq key, whisper-large-v3-turbo runs it in roughly
 # half the time at the same quality — measured 554ms against 1119ms on 20-26s of
 # speech, with identical English output and Japanese scoring 0.98 on both.
@@ -446,3 +463,25 @@ LOOPBACK_STALL_SECONDS = float(os.getenv("LOOPBACK_STALL_SECONDS", "8"))
 # for ever with no error. Cheap to check, but it is a COM call, so not on every
 # 43ms block.
 OUTPUT_RECHECK_SECONDS = float(os.getenv("OUTPUT_RECHECK_SECONDS", "3"))
+
+
+# How aggressively to refuse to transcribe a clip:
+#
+#   full     peak AND burstiness must pass. Fewest wasted calls, and the only
+#            mode that reliably keeps invented text out of the transcript —
+#            but it CAN drop quiet or oddly-shaped real speech.
+#   silence  drop only digital silence (peak under SPEECH_ABSOLUTE_MIN).
+#            Nothing that could possibly be audio is dropped. DEFAULT.
+#   off      transcribe every clip, including the exact-zero buffers a stalled
+#            loopback produces. Costs a call per sweep for nothing.
+#
+# "silence" is the default because dropping a real question is much worse than
+# a stray hallucinated line, and because a stalled tap returns exact zeros that
+# are worth skipping in every mode.
+#
+# Filtering hallucination out of the TEXT afterwards was tried and rejected: on
+# real samples, 3-gram repetition put invented text at 0.058 and real speech at
+# 0.071 (inverted), and vocabulary diversity separated them by 0.006 — neither
+# is a threshold anyone should trust. Partial hallucinations, where garbage and
+# real speech share one line, defeat both.
+SPEECH_GATE = os.getenv("SPEECH_GATE", "silence").strip().lower()
