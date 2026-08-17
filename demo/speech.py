@@ -16,7 +16,7 @@ import threading
 import time
 from collections import deque
 
-from . import config, local_tts
+from . import config, local_tts, xai_voice
 from .meter import METER
 
 # Stereo Mix lags the sound card slightly, so the audio loop has to stay deaf
@@ -139,23 +139,45 @@ class Speaker:
             self._report(f"audio device unavailable: {exc}")
             return
 
-        # Try Windows' own voice first: ~125ms for the whole clip against
+        # A configured xAI voice wins, because the whole point of choosing one
+        # is to hear THAT voice — falling back to Windows' would defeat it.
+        # Costs ~950-2000ms against the local voice's 220ms; that trade is the
+        # user's to make by setting XAI_VOICE_ID at all.
+        xai = None
+        if config.XAI_VOICE_ID:
+            xai = xai_voice.synthesize(text, self._report)
+        # Otherwise Windows' own voice: ~125ms for the whole clip against
         # ~2075ms to the API's FIRST byte. Falls through to the API when no
         # local voice matches the language.
         local = None
-        if config.LOCAL_TTS:
+        if xai is None and config.LOCAL_TTS:
             local = local_tts.synthesize(text, config.TTS_SPEED)
 
         stream = None
         try:
+            if xai is not None:
+                rate = xai[1]
+            elif local:
+                rate = local_tts.SAMPLE_RATE
+            else:
+                rate = config.TTS_SAMPLE_RATE
             stream = sd.RawOutputStream(
-                samplerate=local_tts.SAMPLE_RATE if local else config.TTS_SAMPLE_RATE,
+                samplerate=rate,
                 channels=1,
                 dtype="int16",
                 device=self._device,
                 blocksize=0,
             )
             stream.start()
+            if xai is not None:
+                # Written in blocks so a second press can still cut it off,
+                # exactly as with the local voice and the streamed API.
+                pcm = xai[0]
+                for start in range(0, len(pcm), 4096):
+                    if cancel.is_set():
+                        break
+                    stream.write(pcm[start:start + 4096])
+                return
             if local:
                 # Written in blocks rather than one call so a second press can
                 # still cut it off part-way, exactly as with the streamed API.

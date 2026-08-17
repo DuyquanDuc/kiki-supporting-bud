@@ -561,3 +561,27 @@ AUTO_ANSWER_MODE = os.getenv("AUTO_ANSWER_MODE", "detail").strip().lower()
 # Never fire twice within this many seconds. A long question often arrives as
 # two transcript lines, and answering each one talks over the other.
 AUTO_ANSWER_COOLDOWN = float(os.getenv("AUTO_ANSWER_COOLDOWN", "8"))
+
+
+# --- xAI voices (optional) --------------------------------------------------
+# A cloned voice, or one of xAI's built-in ones, instead of the Windows voice.
+#
+# CLONING IS NOT DONE FROM HERE. POST /v1/custom-voices returns
+# "Custom voices are not enabled for this team" on a normal key — it needs an
+# Enterprise team. The console does it free (cap 30), and it cannot be done
+# from a recording anyway: verification is a live passphrase plus a
+# speaker-embedding match, specifically so a third party cannot be cloned from
+# existing audio. Make the voice there, then put its id here.
+#
+# It is also US-only at the time of writing, excluding Illinois.
+#
+# WHAT IT COSTS IN LATENCY. Measured: ~950-2000ms for a whole short line,
+# against 220ms for the Windows voice. Unary, not streamed, so that is
+# time-to-FIRST-sound too. Worth it for a voice that sounds like you; not worth
+# it if you only care how fast the answer arrives.
+XAI_API_KEY = os.getenv("XAI_API_KEY", "").strip()
+# A custom voice id from the console, or a built-in name like "eve". Blank
+# leaves speech exactly as it is.
+XAI_VOICE_ID = os.getenv("XAI_VOICE_ID", "").strip()
+XAI_TTS_URL = os.getenv("XAI_TTS_URL", "https://api.x.ai/v1/tts").strip()
+XAI_TIMEOUT = float(os.getenv("XAI_TIMEOUT", "20"))
