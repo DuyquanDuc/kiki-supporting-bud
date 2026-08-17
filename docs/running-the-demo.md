@@ -244,6 +244,34 @@ space → **Show Disabled Devices** → right-click **Stereo Mix** → **Enable*
 Re-run `check_setup`. If it stays dead, install
 [VB-Audio Cable](https://vb-audio.com/Cable/) and set `AUDIO_DEVICE=CABLE Output`.
 
+### Headphones, Bluetooth, and switching mid-meeting
+
+WASAPI loopback taps ONE output endpoint. Connecting Bluetooth earphones or
+plugging in a jack moves playback to a different endpoint, and a tap on the old
+one keeps returning digital silence for ever, with no error — the bot simply
+stops hearing the meeting while you hear it perfectly.
+
+The loopback now re-checks the default output every few seconds and follows it:
+
+```
+[10:41:02] audio [Them] output moved to Headphones (soundcore P40i Stereo) — following it
+```
+
+Two related lines worth recognising:
+
+```
+audio [Them] heard nothing but digital silence for 25s — reopening the loopback (reopen #1)
+press [Them]: dropped 20.0s, no speech in it (peak 0.00000 ...)
+```
+
+`peak 0.00000` is EXACT zeros — a stalled tap, not a quiet room, because a
+working loopback on a silent room still carries a noise floor. One reopen is
+routine. Repeated reopens with no audio arriving means playback is going
+somewhere the tap cannot see.
+
+`OUTPUT_RECHECK_SECONDS=0` stops it following; `LOOPBACK_STALL_SECONDS=0`
+disables the reopen.
+
 ### The live meter
 
 When the device opens and streams but still transcribes nothing, the tone probe

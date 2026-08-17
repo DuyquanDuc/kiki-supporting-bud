@@ -1221,10 +1221,16 @@ class AudioLoop:
         except Exception:
             pass
 
+        def default_output():
+            """The CURRENT default output. Re-read rather than cached: plugging
+            in headphones or connecting Bluetooth moves it, and a tap on the old
+            endpoint keeps returning silence for ever after."""
+            sp = soundcard.default_speaker()
+            return sp, soundcard.get_microphone(id=str(sp.name),
+                                                include_loopback=True)
+
         try:
-            speaker = soundcard.default_speaker()
-            microphone = soundcard.get_microphone(id=str(speaker.name),
-                                                  include_loopback=True)
+            speaker, microphone = default_output()
         except Exception as exc:
             source.error = f"no loopback for the default speaker: {exc}"
             self._on_event(f"audio [{source.label}] {source.error}")
@@ -1247,6 +1253,7 @@ class AudioLoop:
             # user can plainly hear never arrives.
             while not self._halt.is_set():
                 silent_since = None
+                checked_at = time.monotonic()
                 with microphone.recorder(samplerate=source.samplerate, channels=1,
                                          blocksize=block) as recorder:
                     if not announced:
@@ -1275,9 +1282,25 @@ class AudioLoop:
                         # loopback on a silent room still carries dither and
                         # noise floor, so an unbroken run of exact zeros means
                         # the tap has come loose rather than nobody talking.
+                        now = time.monotonic()
+                        # Follow the output device. Checked on a timer because
+                        # it is a COM call, not something to do every 43ms.
+                        if now - checked_at >= config.OUTPUT_RECHECK_SECONDS:
+                            checked_at = now
+                            try:
+                                current = soundcard.default_speaker()
+                            except Exception:
+                                current = None
+                            if current is not None and str(current.name) != str(speaker.name):
+                                self._on_event(
+                                    f"audio [{source.label}] output moved to "
+                                    f"{current.name} — following it"
+                                )
+                                speaker, microphone = default_output()
+                                source.device = f"loopback of {speaker.name}"
+                                break
                         if config.LOOPBACK_STALL_SECONDS <= 0:
                             continue
-                        now = time.monotonic()
                         if block_rms > 0.0:
                             silent_since = None
                         elif silent_since is None:
@@ -1287,10 +1310,15 @@ class AudioLoop:
                             self._on_event(
                                 f"audio [{source.label}] heard nothing but digital "
                                 f"silence for {config.LOOPBACK_STALL_SECONDS:.0f}s — "
-                                f"reopening the loopback (reopen #{reopens}). "
-                                f"If this repeats, check whether playback moved to "
-                                f"another output device."
+                                f"reopening the loopback (reopen #{reopens})"
                             )
+                            # Re-resolve as well as reopen: the endpoint may have
+                            # gone away entirely rather than merely stalled.
+                            try:
+                                speaker, microphone = default_output()
+                                source.device = f"loopback of {speaker.name}"
+                            except Exception:
+                                pass
                             break          # leave the `with`, reopen the recorder
         except Exception as exc:
             source.error = f"loopback capture stopped: {exc}"

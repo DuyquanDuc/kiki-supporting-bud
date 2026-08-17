@@ -426,3 +426,11 @@ SPEECH_ABSOLUTE_MIN = float(os.getenv("SPEECH_ABSOLUTE_MIN", "0.0002"))
 # than any natural pause in a meeting and short enough to lose only one sweep.
 # 0 disables the watchdog.
 LOOPBACK_STALL_SECONDS = float(os.getenv("LOOPBACK_STALL_SECONDS", "25"))
+
+
+# How often to check whether the default OUTPUT device has changed. WASAPI
+# loopback taps one endpoint; connecting Bluetooth headphones or plugging in a
+# jack moves playback to a different one, and the old tap then returns silence
+# for ever with no error. Cheap to check, but it is a COM call, so not on every
+# 43ms block.
+OUTPUT_RECHECK_SECONDS = float(os.getenv("OUTPUT_RECHECK_SECONDS", "3"))
