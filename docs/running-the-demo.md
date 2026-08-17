@@ -379,6 +379,32 @@ the flag is dropped while the box has the caret and restored on Enter or Escape.
 The `ask:` label stays highlighted while a request is active, because a
 forgotten "translate everything" is a confusing five minutes.
 
+## Answering without being asked
+
+`AUTO_ANSWER=1` watches the transcript for questions and answers them into the
+history window as they arrive.
+
+**It never speaks.** That is the whole design: a voice in your ear partway
+through somebody else's sentence costs more than the press it saved, and a
+detector that fires on a monologue would do it repeatedly. The answer is
+waiting in the F7 window when you look; press F9, F10 or F11 when you actually
+want to hear one.
+
+Detection is deliberately conservative — a missed question costs a button
+press, a false one is noise. It leans on sentence-final punctuation and
+grammar, not keywords: "explain", "how" and "walk me through" all appear
+mid-statement ("let me explain how closures work") and a keyword list fires on
+every one of them.
+
+| | |
+|---|---|
+| `AUTO_ANSWER_MODE` | `detail` (F11-style) or `quick` (F9-style) |
+| `AUTO_ANSWER_SOURCES` | `Them` — never triggers on your own voice |
+| `AUTO_ANSWER_COOLDOWN` | 8s, so a two-line question answers once |
+
+Best suited to interview practice, where every question really is for you. In a
+real meeting most questions are not, and each one costs an answer call.
+
 ## Live transcription (optional)
 
 `TRANSCRIBE_MODE=stream` holds a websocket open and receives the transcript as

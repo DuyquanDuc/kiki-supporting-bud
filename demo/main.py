@@ -186,6 +186,30 @@ class Trigger:
     def _run_detail(self) -> None:
         self._run_audio(detailed=True)
 
+    def answer_silently(self, question: str) -> None:
+        """Answer a question nobody pressed a button for — WITHOUT speaking.
+
+        Auto-answering aloud would put a voice in your ear in the middle of
+        somebody else's sentence, which costs more than the press it saves. So
+        this writes to the history window and says nothing; press F9/F10/F11
+        when you actually want to hear it.
+        """
+        self._dispatch(lambda: self._run_auto(question))
+
+    def _run_auto(self, question: str) -> None:
+        started = time.perf_counter()
+        if self._audio is None:
+            return
+        detailed = config.AUTO_ANSWER_MODE != "quick"
+        # No on_spoken callback: that is what speaks mid-stream.
+        body = (self._audio.answer_detailed() if detailed
+                else self._audio.answer_now())
+        if not body:
+            return
+        self._deliver("Heard a question", body, started,
+                      "auto, not spoken", "auto", question=question,
+                      silent=True)
+
     def _illustrate(self, prompt: str) -> None:
         """Draw in the background. NEVER on the press's own thread.
 
@@ -325,7 +349,8 @@ class Trigger:
     # --- shared -------------------------------------------------------------
 
     def _deliver(self, title: str, body: str, started: float, note: str,
-                 label: str, question: str = "", already_spoken: bool = False) -> None:
+                 label: str, question: str = "", already_spoken: bool = False,
+                 silent: bool = False) -> None:
         # An ```image block is a stage direction, not part of the answer: pull
         # it out before anything reads, prints or speaks the body.
         image_prompt, body = illustrate.extract(body)
@@ -339,7 +364,7 @@ class Trigger:
         log_answer(printed)
         # Streamed answers were spoken mid-generation; saying them again would
         # cancel the playback already in progress and start over.
-        if not already_spoken:
+        if not already_spoken and not silent:
             self._speak(spoken)
         # Started AFTER the answer is out, so the picture costs the press nothing.
         if image_prompt:
@@ -533,6 +558,10 @@ def main() -> None:
     # loop, so the link is made here rather than at construction.
     if audio is not None and use_history:
         audio.set_instruction(lambda: history.instruction)
+    if audio is not None and config.AUTO_ANSWER:
+        audio.set_question_handler(trigger.answer_silently)
+        log(f"AUTO_ANSWER on — questions are answered into the history window "
+            f"({config.AUTO_ANSWER_MODE}), never spoken. Press a button to hear one.")
 
     def pump() -> None:
         try:

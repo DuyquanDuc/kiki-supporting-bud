@@ -543,3 +543,21 @@ STREAM_MAX_TURN_SECONDS = float(os.getenv("STREAM_MAX_TURN_SECONDS", "12"))
 # the end of speech, so this is that plus a little headroom — still far less
 # than the 1-3s a batch press spends transcribing its backlog.
 STREAM_SETTLE_SECONDS = float(os.getenv("STREAM_SETTLE_SECONDS", "0.9"))
+
+
+# --- Answering without being asked -----------------------------------------
+# OFF by default, and it should stay off for real meetings. A bot that decides
+# for itself when to speak will sometimes decide during someone else's
+# sentence, and a voice in your ear at the wrong moment costs more than a
+# button press. Where it earns its keep is practice: an interview drill where
+# every question IS for you and you want both hands free.
+AUTO_ANSWER = _flag("AUTO_ANSWER", False)
+# Which speakers can trigger it. "You" is excluded on purpose — answering your
+# own rhetorical questions back to you is pure noise.
+AUTO_ANSWER_SOURCES = os.getenv("AUTO_ANSWER_SOURCES", "Them").strip()
+# quick  = the F9 answer, one spoken line
+# detail = the F11 answer, one spoken line plus detail to read
+AUTO_ANSWER_MODE = os.getenv("AUTO_ANSWER_MODE", "detail").strip().lower()
+# Never fire twice within this many seconds. A long question often arrives as
+# two transcript lines, and answering each one talks over the other.
+AUTO_ANSWER_COOLDOWN = float(os.getenv("AUTO_ANSWER_COOLDOWN", "8"))

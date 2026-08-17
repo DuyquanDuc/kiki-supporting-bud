@@ -73,6 +73,38 @@ def _speech_profile(audio, samplerate: int):
     return float(np.percentile(rms, 95)), float(np.percentile(rms, 20))
 
 
+# A question mark in any script, or the grammar that ends a question without
+# one. The transcriber punctuates reliably, so "?" carries most of the weight;
+# the rest catches lines where it did not.
+# Deliberately CONSERVATIVE. A missed question costs a button press; a false
+# one puts an answer in the window during somebody's explanation, and at worst
+# fires repeatedly through a monologue. So this leans on sentence-final
+# punctuation and grammar rather than keywords: "explain", "how" and "walk me
+# through" all appear mid-statement ("let me explain how closures work") and a
+# keyword list fires on every one of them.
+#
+# The transcriber punctuates reliably, so "?" carries English on its own.
+# Japanese and Vietnamese get their sentence-final question forms, which are
+# equally unambiguous, because neither always ends up with a question mark.
+_QUESTION = re.compile(
+    "[?？]"                                   # ? or ？, any script
+    "|(ですか|ますか|でしょうか|ませんか|かい)\s*[。.]?\s*$"      # Japanese, sentence-final
+    "|(là gì|thế nào|tại sao|khi nào|có phải)"    # Vietnamese question forms
+)
+
+
+def looks_like_a_question(text: str) -> bool:
+    """Was that a question? Cheap and deliberately not a model call.
+
+    Runs on every transcribed line, so it has to be free. False positives cost
+    an unwanted answer; the cooldown and the busy lock bound the damage.
+    """
+    stripped = (text or "").strip()
+    if len(stripped) < 8:
+        return False
+    return bool(_QUESTION.search(stripped))
+
+
 def _trigrams(text: str) -> set:
     """Character trigrams. Language-agnostic on purpose: word splitting does not
     work for Japanese, and this has to catch our own voice in every language."""
@@ -716,6 +748,9 @@ class AudioLoop:
         # TRANSCRIBE_MODE=stream only. Empty in batch mode, and every use of it
         # below is behind a mode check.
         self._streams: dict[str, object] = {}
+        # Fired when a question is heard, if AUTO_ANSWER is on. Set by main.
+        self._on_question = None
+        self._last_auto = 0.0
         self._groq_client = None
         self._groq_dead = False
         self._history: deque[tuple[str, str]] = deque(maxlen=config.ANSWER_HISTORY)
@@ -766,6 +801,7 @@ class AudioLoop:
                 self._append_to_disk(stamped)
                 self.chunks_transcribed += 1
                 self._on_event(f"heard [{label}] (live): {kept}")
+                self._maybe_auto_answer(label, kept)
 
             stream = StreamTranscriber(config.OPENAI_API_KEY, source.label,
                                        deliver, self._on_event)
@@ -1150,6 +1186,7 @@ class AudioLoop:
                 f"heard [{source.label}] ({seconds:.0f}s, {reason}, "
                 f"transcribed in {(time.perf_counter() - sent_at) * 1000:.0f}ms): {text}"
             )
+            self._maybe_auto_answer(source.label, text)
         return got
 
     def answer_now(self, on_spoken=None) -> str:
@@ -1664,6 +1701,31 @@ class AudioLoop:
         except Exception as exc:
             self._on_event(f"docs: could not read: {exc}")
             return ""
+
+    def set_question_handler(self, handler) -> None:
+        """Called with the question text when one is heard. AUTO_ANSWER only."""
+        self._on_question = handler
+
+    def _maybe_auto_answer(self, label: str, text: str) -> None:
+        """Answer without being asked, if this looks like a question for us."""
+        if not config.AUTO_ANSWER or self._on_question is None:
+            return
+        allowed = [s.strip() for s in config.AUTO_ANSWER_SOURCES.split(",")]
+        if label not in allowed:
+            return
+        if not looks_like_a_question(text):
+            return
+        now = time.monotonic()
+        if now - self._last_auto < config.AUTO_ANSWER_COOLDOWN:
+            # A long question often arrives as two lines; answering both means
+            # the second answer talks over the first.
+            return
+        self._last_auto = now
+        self._on_event(f"heard a question — answering without a press")
+        try:
+            self._on_question(text)
+        except Exception as exc:
+            self._on_event(f"auto-answer failed: {str(exc)[:60]}")
 
     def set_instruction(self, getter) -> None:
         """Point the loop at the ask box, which is built after it is.
