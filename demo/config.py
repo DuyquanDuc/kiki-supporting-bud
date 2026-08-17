@@ -389,3 +389,20 @@ def missing_key() -> bool:
 CAPTURE_WHILE_SPEAKING = _flag("CAPTURE_WHILE_SPEAKING", True)
 ECHO_THRESHOLD = float(os.getenv("ECHO_THRESHOLD", "0.45"))
 ECHO_WINDOW_SECONDS = float(os.getenv("ECHO_WINDOW_SECONDS", "60"))
+
+
+# Speech is BURSTY; room tone is flat. A clip is sent for transcription only if
+# its loud tenth is this many times louder than its quiet fifth.
+#
+# The plain RMS floor below was not enough on its own, and the failure was ugly:
+# 12s of room tone measuring 0.004 sailed past it and came back as a thousand
+# characters of confident invention — "The system can be fast. The system can be
+# fast. At the system be fast..." — which then entered the transcript and got
+# ANSWERED. A bare "the" and repeated "Args. Args. Args." in a real session were
+# the same artifact.
+#
+# Measured p95/p20 ratios: real speech 19.6-104.3, noise 1.0 at EVERY level
+# tested (0.002 to 0.03), and 20s of silence containing one 2s utterance 101.1.
+# 4.0 sits in an enormous gap, and rejects loud noise the RMS floor waves
+# through.
+SPEECH_BURST_RATIO = float(os.getenv("SPEECH_BURST_RATIO", "4.0"))

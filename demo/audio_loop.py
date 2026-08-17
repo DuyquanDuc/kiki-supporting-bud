@@ -57,6 +57,22 @@ THEM = "Them"
 YOU = "You"
 
 
+def _speech_profile(audio, samplerate: int):
+    """(loud, quiet) RMS over 100ms windows, or None if the clip is too short.
+
+    Speech is bursty — loud syllables against near-silent gaps — while room
+    tone, fan noise and a muted call are flat at whatever level they sit. The
+    ratio between the two separates them regardless of how LOUD the noise is,
+    which a single whole-clip RMS cannot do.
+    """
+    window = max(1, samplerate // 10)
+    count = len(audio) // window
+    if count < 3:
+        return None
+    rms = np.sqrt((audio[:count * window].reshape(count, window) ** 2).mean(axis=1))
+    return float(np.percentile(rms, 95)), float(np.percentile(rms, 20))
+
+
 def _trigrams(text: str) -> set:
     """Character trigrams. Language-agnostic on purpose: word splitting does not
     work for Japanese, and this has to catch our own voice in every language."""
@@ -952,11 +968,24 @@ class AudioLoop:
                 continue
             seconds = len(audio) / max(1, source.samplerate)
             level = float(np.sqrt(np.mean(np.square(audio))))
-            if level < source.floor:
+            profile = _speech_profile(audio, source.samplerate)
+            if profile is None:
+                quiet_enough = level < source.floor
+                why = f"level {level:.5f} < floor {source.floor:.5f}"
+            else:
+                loud, quiet = profile
+                ratio = loud / max(quiet, 1e-9)
+                # Two ways to be silence: nothing loud enough to be a voice, or
+                # loud but FLAT — which is noise, and the case that produced a
+                # thousand characters of invented text.
+                quiet_enough = loud < source.floor or ratio < config.SPEECH_BURST_RATIO
+                why = (f"peak {loud:.5f} vs floor {source.floor:.5f}, "
+                       f"burst ratio {ratio:.1f} < {config.SPEECH_BURST_RATIO}")
+            if quiet_enough:
                 # NOTE: this audio has already been drained, so it is now gone.
                 self._on_event(
-                    f"{reason} [{source.label}]: dropped {seconds:.1f}s as silence "
-                    f"(level {level:.5f} < floor {source.floor:.5f})"
+                    f"{reason} [{source.label}]: dropped {seconds:.1f}s, no speech "
+                    f"in it ({why})"
                 )
                 continue
             jobs.append((source, audio))
