@@ -1337,6 +1337,8 @@ class AudioLoop:
         muted_frames = 0
         announced = False
         reopens = 0
+        # Grows on each fruitless reopen; reset the moment audio arrives.
+        wait_for = config.LOOPBACK_STALL_SECONDS
         try:
             # Outer loop so a stalled capture can be reopened. WASAPI loopback
             # does not report going deaf: it keeps returning buffers, and they
@@ -1397,18 +1399,43 @@ class AudioLoop:
                         if config.LOOPBACK_STALL_SECONDS <= 0:
                             continue
                         if block_rms > 0.0:
+                            if reopens:
+                                self._on_event(
+                                    f"audio [{source.label}] audio is arriving again"
+                                )
+                                reopens = 0
+                            wait_for = config.LOOPBACK_STALL_SECONDS
                             silent_since = None
                         elif silent_since is None:
                             silent_since = now
-                        elif now - silent_since >= config.LOOPBACK_STALL_SECONDS:
+                        elif now - silent_since >= wait_for:
                             reopens += 1
-                            self._on_event(
-                                f"audio [{source.label}] heard nothing but digital "
-                                f"silence for {config.LOOPBACK_STALL_SECONDS:.0f}s — "
-                                f"reopening the loopback (reopen #{reopens})"
-                            )
-                            # Re-resolve as well as reopen: the endpoint may have
-                            # gone away entirely rather than merely stalled.
+                            # Backs off, because reopening does NOT fix this.
+                            # Measured directly: a tone played to the same
+                            # endpoint is captured at full level with no
+                            # stalls, so silence here means nothing is being
+                            # RENDERED to the device — the player is paused, or
+                            # it is sending audio somewhere else. Tearing down
+                            # a WASAPI client every 8s cannot help that, and on
+                            # Bluetooth it is a good way to make things worse.
+                            wait_for = min(wait_for * 2, 120.0)
+                            if reopens <= 2:
+                                self._on_event(
+                                    f"audio [{source.label}] nothing rendering to "
+                                    f"{speaker.name} — reopening once in case the "
+                                    f"tap is stale"
+                                )
+                            elif reopens == 3:
+                                self._on_event(
+                                    f"audio [{source.label}] STILL nothing rendering "
+                                    f"to {speaker.name}. The tap is fine — the audio "
+                                    f"is not arriving. Check that playback is going "
+                                    f"to this device (Settings > Sound > Volume "
+                                    f"mixer shows it per app), and that the player "
+                                    f"is not paused. Bluetooth also idles its stream "
+                                    f"aggressively; wired is steadier for anything "
+                                    f"that matters."
+                                )
                             try:
                                 speaker, microphone = default_output()
                                 source.device = f"loopback of {speaker.name}"
