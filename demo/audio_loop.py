@@ -633,10 +633,13 @@ class Source:
         with self.buf_lock:
             if self.buf_frames < minimum_seconds * self.samplerate or not self.buf:
                 return None
-            audio = _np.concatenate(list(self.buf))
+            # Take the blocks and release IMMEDIATELY. Concatenating 45s at
+            # 48kHz under the lock stalls the capture thread, which has to read
+            # every 43ms or WASAPI drops frames and logs a data discontinuity.
+            blocks = list(self.buf)
             self.buf.clear()
             self.buf_frames = 0
-            return audio
+        return _np.concatenate(blocks)
 
     @property
     def alive(self) -> bool:
@@ -975,12 +978,14 @@ class AudioLoop:
             else:
                 loud, quiet = profile
                 ratio = loud / max(quiet, 1e-9)
-                # Two ways to be silence: nothing loud enough to be a voice, or
-                # loud but FLAT — which is noise, and the case that produced a
-                # thousand characters of invented text.
-                quiet_enough = loud < source.floor or ratio < config.SPEECH_BURST_RATIO
-                why = (f"peak {loud:.5f} vs floor {source.floor:.5f}, "
-                       f"burst ratio {ratio:.1f} < {config.SPEECH_BURST_RATIO}")
+                # Burstiness is the real test; loudness only has to clear
+                # digital silence. Requiring the peak to beat the full silence
+                # floor AS WELL discarded genuinely quiet speech whose structure
+                # was obvious — 21s at ratio 1,265,998 with a peak 0.0002 short.
+                quiet_enough = (loud < config.SPEECH_ABSOLUTE_MIN
+                                or ratio < config.SPEECH_BURST_RATIO)
+                why = (f"peak {loud:.5f} vs min {config.SPEECH_ABSOLUTE_MIN}, "
+                       f"burst ratio {ratio:.1f} vs {config.SPEECH_BURST_RATIO}")
             if quiet_enough:
                 # NOTE: this audio has already been drained, so it is now gone.
                 self._on_event(
@@ -1233,28 +1238,60 @@ class AudioLoop:
         cadence = (f"sweeping every {sweep:.0f}s" if sweep > 0
                    else "transcribing only on press")
         muted_frames = 0
+        announced = False
+        reopens = 0
         try:
-            with microphone.recorder(samplerate=source.samplerate, channels=1,
-                                     blocksize=block) as recorder:
-                self._on_event(
-                    f"audio [{source.label}] listening — {source.device} "
-                    f"via WASAPI loopback, {source.samplerate}Hz, {cadence} "
-                    f"(buffer max {config.AUDIO_BUFFER_MAX_SECONDS:.0f}s)"
-                )
-                while not self._halt.is_set():
-                    data = recorder.record(numframes=block)
-                    if data is None or len(data) == 0:
-                        continue
-                    mono = data.mean(axis=1) if data.ndim > 1 else data
-                    mono = mono.astype(np.float32)
-                    if self._is_muted() and not config.CAPTURE_WHILE_SPEAKING:
-                        muted_frames += len(mono)
-                        continue
-                    source.frames += len(mono)
-                    block_rms = float(np.sqrt(np.mean(np.square(mono))))
-                    source.level = max(source.level * 0.85, block_rms)
-                    with source.buf_lock:
-                        source.add(mono)
+            # Outer loop so a stalled capture can be reopened. WASAPI loopback
+            # does not report going deaf: it keeps returning buffers, and they
+            # are all zeros. The only symptom from in here is that the audio a
+            # user can plainly hear never arrives.
+            while not self._halt.is_set():
+                silent_since = None
+                with microphone.recorder(samplerate=source.samplerate, channels=1,
+                                         blocksize=block) as recorder:
+                    if not announced:
+                        self._on_event(
+                            f"audio [{source.label}] listening — {source.device} "
+                            f"via WASAPI loopback, {source.samplerate}Hz, {cadence} "
+                            f"(buffer max {config.AUDIO_BUFFER_MAX_SECONDS:.0f}s)"
+                        )
+                        announced = True
+                    while not self._halt.is_set():
+                        data = recorder.record(numframes=block)
+                        if data is None or len(data) == 0:
+                            continue
+                        mono = data.mean(axis=1) if data.ndim > 1 else data
+                        mono = mono.astype(np.float32)
+                        if self._is_muted() and not config.CAPTURE_WHILE_SPEAKING:
+                            muted_frames += len(mono)
+                            continue
+                        source.frames += len(mono)
+                        block_rms = float(np.sqrt(np.mean(np.square(mono))))
+                        source.level = max(source.level * 0.85, block_rms)
+                        with source.buf_lock:
+                            source.add(mono)
+
+                        # Digital silence, not quiet-room silence: a working
+                        # loopback on a silent room still carries dither and
+                        # noise floor, so an unbroken run of exact zeros means
+                        # the tap has come loose rather than nobody talking.
+                        if config.LOOPBACK_STALL_SECONDS <= 0:
+                            continue
+                        now = time.monotonic()
+                        if block_rms > 0.0:
+                            silent_since = None
+                        elif silent_since is None:
+                            silent_since = now
+                        elif now - silent_since >= config.LOOPBACK_STALL_SECONDS:
+                            reopens += 1
+                            self._on_event(
+                                f"audio [{source.label}] heard nothing but digital "
+                                f"silence for {config.LOOPBACK_STALL_SECONDS:.0f}s — "
+                                f"reopening the loopback (reopen #{reopens}). "
+                                f"If this repeats, check whether playback moved to "
+                                f"another output device."
+                            )
+                            break          # leave the `with`, reopen the recorder
         except Exception as exc:
             source.error = f"loopback capture stopped: {exc}"
             self._on_event(f"audio [{source.label}] error: {exc}")

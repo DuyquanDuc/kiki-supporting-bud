@@ -406,3 +406,23 @@ ECHO_WINDOW_SECONDS = float(os.getenv("ECHO_WINDOW_SECONDS", "60"))
 # 4.0 sits in an enormous gap, and rejects loud noise the RMS floor waves
 # through.
 SPEECH_BURST_RATIO = float(os.getenv("SPEECH_BURST_RATIO", "4.0"))
+# The absolute floor below which audio is digital silence rather than quiet
+# speech. Deliberately far under AUDIO_SILENCE_RMS: once burstiness has proved
+# the clip has speech STRUCTURE, loudness barely matters, and a real session
+# threw away 21s whose burst ratio was 1,265,998 — unmistakably a voice —
+# because its peak sat 0.0002 under the old floor.
+SPEECH_ABSOLUTE_MIN = float(os.getenv("SPEECH_ABSOLUTE_MIN", "0.0002"))
+
+
+# WASAPI loopback can keep handing back digital silence while audio plays
+# perfectly out of the speakers — the capture client survives a device glitch,
+# a format change or another app grabbing the endpoint, and simply goes quiet.
+# Observed in a real session: minutes of "peak 0.00000" against a video the
+# user could hear clearly, punctuated by soundcard's "data discontinuity in
+# recording" warnings.
+#
+# Nothing detects that from inside the stream, so after this many seconds of
+# UNBROKEN digital silence the recorder is closed and reopened. 25s is longer
+# than any natural pause in a meeting and short enough to lose only one sweep.
+# 0 disables the watchdog.
+LOOPBACK_STALL_SECONDS = float(os.getenv("LOOPBACK_STALL_SECONDS", "25"))
