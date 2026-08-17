@@ -710,6 +710,9 @@ class AudioLoop:
         # Per model: ANSWER_MODEL and VISION_MODEL can differ, and one
         # rejecting reasoning_effort says nothing about the other.
         self._no_effort: set[str] = set()
+        # Per source, how often the transcriber returned our prompt instead of
+        # speech. A source doing this repeatedly is a source with no audio.
+        self._echoes: dict[str, int] = {}
         self._groq_client = None
         self._groq_dead = False
         self._history: deque[tuple[str, str]] = deque(maxlen=config.ANSWER_HISTORY)
@@ -1041,6 +1044,21 @@ class AudioLoop:
             seconds = len(audio) / max(1, source.samplerate)
             source.chunks += 1
             if not text:
+                continue
+            # The model handed our own vocabulary prompt back instead of
+            # transcribing. Happens when a source carries no speech, and it
+            # poisons the transcript with the profile as if the user said it.
+            if self._is_prompt_echo(text):
+                self._echoes[source.label] = self._echoes.get(source.label, 0) + 1
+                note = ""
+                if self._echoes[source.label] in (3, 10, 30):
+                    note = (f" — [{source.label}] has now done this "
+                            f"{self._echoes[source.label]} times; that source "
+                            f"probably has no audio on it at all")
+                self._on_event(
+                    f"{reason} [{source.label}]: the transcriber echoed our own "
+                    f"vocabulary prompt back, not speech — dropped{note}"
+                )
                 continue
             kept = self._strip_our_own_voice(text)
             if kept != text:
@@ -1568,6 +1586,21 @@ class AudioLoop:
         A getter rather than a value: the user retypes it between presses.
         """
         self._instruction = getter or (lambda: "")
+
+    def _is_prompt_echo(self, text: str) -> bool:
+        """Is this the vocabulary prompt handed back to us?
+
+        Near-silence plus a long prompt makes the transcriber continue the
+        prompt rather than transcribe anything, so profile.md arrives as if it
+        were speech. Detectable precisely because the text is known — unlike
+        hallucination in general, which no threshold separates reliably.
+        """
+        if not text:
+            return False
+        vocabulary = self._vocabulary()
+        if not vocabulary:
+            return False
+        return _overlap(text, vocabulary) >= config.PROMPT_ECHO_THRESHOLD
 
     def _strip_our_own_voice(self, text: str) -> str:
         """Remove OUR sentences, keep theirs. Loopback taps the render endpoint,

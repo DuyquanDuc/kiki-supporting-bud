@@ -475,13 +475,37 @@ OUTPUT_RECHECK_SECONDS = float(os.getenv("OUTPUT_RECHECK_SECONDS", "3"))
 #   off      transcribe every clip, including the exact-zero buffers a stalled
 #            loopback produces. Costs a call per sweep for nothing.
 #
-# "silence" is the default because dropping a real question is much worse than
-# a stray hallucinated line, and because a stalled tap returns exact zeros that
-# are worth skipping in every mode.
+# "full" is the default, and "silence" was tried as the default and reverted.
+# Transcribing near-silence does not produce nothing, it produces CONFIDENT
+# GARBAGE, in at least two shapes:
+#
+#   1. the vocabulary prompt handed straight back (profile.md arriving as if the
+#      user had said it — caught by PROMPT_ECHO_THRESHOLD, scores 0.97-1.00)
+#   2. training-data boilerplate ("ChatGPT, a large language model trained by
+#      OpenAI, is able to generate...") — scores 0.44 against the prompt, so no
+#      echo filter touches it
+#
+# Both were observed on a real microphone carrying nothing but noise. With the
+# thresholds now calibrated against real audio rather than synthetic speech,
+# "full" keeps the meeting and rejects that noise: measured video speech peaks
+# at 0.051 and an idle mic at 0.0024-0.0039, either side of the 0.008 bar.
 #
 # Filtering hallucination out of the TEXT afterwards was tried and rejected: on
 # real samples, 3-gram repetition put invented text at 0.058 and real speech at
 # 0.071 (inverted), and vocabulary diversity separated them by 0.006 — neither
 # is a threshold anyone should trust. Partial hallucinations, where garbage and
 # real speech share one line, defeat both.
-SPEECH_GATE = os.getenv("SPEECH_GATE", "silence").strip().lower()
+SPEECH_GATE = os.getenv("SPEECH_GATE", "full").strip().lower()
+
+
+# Transcribing near-silence with a long `prompt` makes the model hand the PROMPT
+# BACK as the transcription. A real session filled the transcript with the whole
+# of profile.md, attributed to the user, on every sweep — because the microphone
+# had nothing but noise on it and the profile is the vocabulary prompt.
+#
+# Unlike hallucination in general, this IS reliably detectable: the exact text
+# being echoed is known. Measured trigram overlap against the prompt — echoed
+# lines 0.969-1.000, real speech 0.000-0.708, and the 0.708 was a sentence
+# deliberately naming Kowa 3D, Keyence, MK and SOEJIMA at once. 0.85 sits in the
+# gap with room on both sides.
+PROMPT_ECHO_THRESHOLD = float(os.getenv("PROMPT_ECHO_THRESHOLD", "0.85"))
