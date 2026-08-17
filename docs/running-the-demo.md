@@ -379,6 +379,42 @@ the flag is dropped while the box has the caret and restored on Enter or Escape.
 The `ask:` label stays highlighted while a request is active, because a
 forgotten "translate everything" is a confusing five minutes.
 
+## Live transcription (optional)
+
+`TRANSCRIBE_MODE=stream` holds a websocket open and receives the transcript as
+it is spoken, instead of accumulating audio and transcribing a clip per press.
+
+```powershell
+$env:TRANSCRIBE_MODE = "stream"; python -m demo.main
+```
+
+```
+transcribing with LIVE stream gpt-live-transcribe over websocket (~$0.017/min — TRANSCRIBE_MODE=batch to go back)
+stream [Them] connected (gpt-live-transcribe)
+```
+
+Measured against the batch path on identical fixtures:
+
+| | batch | stream |
+|---|---|---|
+| silence | invents text | **returns nothing** |
+| accuracy en / ja | 0.77 / 0.77 | **0.91 / 0.87** |
+| transcript ready | 1-3s after the press | **~700ms after speech ends** |
+
+The first row is the reason it exists. Every silence gate and echo filter in
+`audio_loop.py` is there to stop the batch transcriber inventing text, and none
+of them is needed in this mode — mic noise, room tone and digital silence all
+returned nothing.
+
+**It costs about 20x more.** $0.017/min against $0.003/min, and it pays for
+wall-clock time where batch only pays for audio that passed a gate: roughly
+$1/hour per source against a few cents. Sending pauses after
+`STREAM_IDLE_PAUSE` seconds of quiet, so an empty room is nearly free.
+
+**Rolling back is one variable.** `TRANSCRIBE_MODE=batch` (the default) and
+nothing in `stream_stt.py` runs at all. The tag `before-streaming-stt` marks the
+commit before any of it existed.
+
 ## Measuring the speed
 
 ```

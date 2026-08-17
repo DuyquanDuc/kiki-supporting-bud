@@ -509,3 +509,37 @@ SPEECH_GATE = os.getenv("SPEECH_GATE", "full").strip().lower()
 # deliberately naming Kowa 3D, Keyence, MK and SOEJIMA at once. 0.85 sits in the
 # gap with room on both sides.
 PROMPT_ECHO_THRESHOLD = float(os.getenv("PROMPT_ECHO_THRESHOLD", "0.85"))
+
+
+# --- Live transcription (optional, off by default) -------------------------
+# batch   accumulate audio and transcribe a clip per sweep/press. The default,
+#         and everything else in this file is tuned for it.
+# stream  hold a websocket open and receive the transcript as it is spoken.
+#
+# Measured against batch on the same fixtures: silence produced NOTHING here
+# (batch invents the vocabulary prompt or training-data boilerplate), accuracy
+# 0.91 en / 0.87 ja against 0.77 / 0.77, and the final lands ~700ms after speech
+# ends rather than 1-3s after the press.
+#
+# It costs about 20x more in practice — $0.017/min against $0.003/min, and it
+# pays for wall-clock time where batch only pays for audio that passed a gate.
+# Roughly $1/hour for one source. Set TRANSCRIBE_MODE=batch to go back; nothing
+# in stream_stt.py runs unless this says otherwise.
+TRANSCRIBE_MODE = os.getenv("TRANSCRIBE_MODE", "batch").strip().lower()
+STREAM_MODEL = os.getenv("STREAM_MODEL", "gpt-live-transcribe").strip()
+# Stop sending after this long without speech. Purely cost control: the socket
+# stays open, so speech resumes instantly.
+STREAM_IDLE_PAUSE = float(os.getenv("STREAM_IDLE_PAUSE", "2.0"))
+# Below this RMS a block counts as quiet for the pause logic above. Only
+# decides whether to SPEND, never whether text is real — the model does that.
+STREAM_SEND_FLOOR = float(os.getenv("STREAM_SEND_FLOOR", "0.004"))
+# Commit the turn after this much silence, so the boundary lands in a gap
+# rather than mid-word.
+STREAM_COMMIT_SILENCE = float(os.getenv("STREAM_COMMIT_SILENCE", "0.7"))
+# ...and force one after this long regardless, so a monologue still produces
+# text before it ends.
+STREAM_MAX_TURN_SECONDS = float(os.getenv("STREAM_MAX_TURN_SECONDS", "12"))
+# How long a press waits for a final still in flight. Measured at ~700ms from
+# the end of speech, so this is that plus a little headroom — still far less
+# than the 1-3s a batch press spends transcribing its backlog.
+STREAM_SETTLE_SECONDS = float(os.getenv("STREAM_SETTLE_SECONDS", "0.9"))

@@ -713,6 +713,9 @@ class AudioLoop:
         # Per source, how often the transcriber returned our prompt instead of
         # speech. A source doing this repeatedly is a source with no audio.
         self._echoes: dict[str, int] = {}
+        # TRANSCRIBE_MODE=stream only. Empty in batch mode, and every use of it
+        # below is behind a mode check.
+        self._streams: dict[str, object] = {}
         self._groq_client = None
         self._groq_dead = False
         self._history: deque[tuple[str, str]] = deque(maxlen=config.ANSWER_HISTORY)
@@ -727,6 +730,9 @@ class AudioLoop:
         fast on a machine whose .env has a Groq key, and nothing on screen would
         say why.
         """
+        if config.TRANSCRIBE_MODE == "stream":
+            return (f"LIVE stream {config.STREAM_MODEL} over websocket "
+                    f"(~$0.017/min — TRANSCRIBE_MODE=batch to go back)")
         if config.TRANSCRIBE_PRIMARY != "groq":
             spare = (f" (fallback: groq {config.GROQ_TRANSCRIBE_MODEL})"
                      if config.GROQ_API_KEY and not self._groq_dead else "")
@@ -736,17 +742,58 @@ class AudioLoop:
                     f"(fallback: openai {config.TRANSCRIBE_MODEL})")
         return f"openai {config.TRANSCRIBE_MODEL} (no GROQ_API_KEY — about 2x slower)"
 
+    def _start_streams(self) -> None:
+        """One websocket per source. Only in TRANSCRIBE_MODE=stream."""
+        if config.TRANSCRIBE_MODE != "stream":
+            return
+        from .stream_stt import StreamTranscriber
+
+        for source in self.sources:
+            def deliver(text, label=source.label):
+                # Same treatment as a batch transcript: our own voice filtered
+                # out, then straight into the transcript and onto disk.
+                kept = self._strip_our_own_voice(text)
+                if not kept:
+                    return
+                now = time.monotonic()
+                stamped = (time.time(), label, kept)
+                with self._lock:
+                    self._transcript.append((now, label, kept))
+                    self._archive.append(stamped)
+                    cutoff = now - config.TRANSCRIPT_WINDOW_MINUTES * 60
+                    while self._transcript and self._transcript[0][0] < cutoff:
+                        self._transcript.popleft()
+                self._append_to_disk(stamped)
+                self.chunks_transcribed += 1
+                self._on_event(f"heard [{label}] (live): {kept}")
+
+            stream = StreamTranscriber(config.OPENAI_API_KEY, source.label,
+                                       deliver, self._on_event)
+            stream.start()
+            self._streams[source.label] = stream
+
     def start(self) -> None:
+        # Before the capture threads, so the first block already has somewhere
+        # to go. No-op unless TRANSCRIBE_MODE=stream.
+        self._start_streams()
         for source in self.sources:
             source.thread = threading.Thread(
                 target=self._capture, args=(source,), daemon=True,
                 name=f"audio-{source.label}",
             )
             source.thread.start()
-        if config.BACKGROUND_TRANSCRIBE_SECONDS > 0:
+        # The sweep transcribes a buffer that streaming never fills, so it has
+        # nothing to do and would only burn a lock every 20s.
+        if config.BACKGROUND_TRANSCRIBE_SECONDS > 0 and config.TRANSCRIBE_MODE != "stream":
             threading.Thread(target=self._sweep, daemon=True, name="audio-sweep").start()
 
     def stop(self) -> None:
+        for stream in self._streams.values():
+            try:
+                stream.stop()
+            except Exception:
+                pass
+        self._streams.clear()
         self._halt.set()
 
     def is_alive(self) -> bool:
@@ -948,6 +995,13 @@ class AudioLoop:
         # once, or half an utterance goes to each and both come back wrong.
         # The press waits for an in-flight sweep rather than skipping: it needs
         # that text to answer.
+        if config.TRANSCRIBE_MODE == "stream":
+            # Nothing is buffered: the transcript is already current. Give any
+            # final still in flight a moment to land rather than answering
+            # without the last sentence.
+            time.sleep(config.STREAM_SETTLE_SECONDS)
+            return self.has_transcript()
+
         waited = time.perf_counter()
         if not self._flush_lock.acquire(timeout=timeout):
             self._on_event(f"press gave up waiting {timeout:.0f}s for a sweep")
@@ -1312,8 +1366,12 @@ class AudioLoop:
                         source.frames += len(mono)
                         block_rms = float(np.sqrt(np.mean(np.square(mono))))
                         source.level = max(source.level * 0.85, block_rms)
-                        with source.buf_lock:
-                            source.add(mono)
+                        stream = self._streams.get(source.label)
+                        if stream is not None:
+                            stream.feed(mono, source.samplerate)
+                        else:
+                            with source.buf_lock:
+                                source.add(mono)
 
                         # Digital silence, not quiet-room silence: a working
                         # loopback on a silent room still carries dither and
