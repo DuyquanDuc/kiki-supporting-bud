@@ -36,6 +36,9 @@ from . import minutes
 from .overlay import Overlay
 from .screen_loop import ScreenLoop, ScreenState
 
+# (kind, title, body, meta, accent, auto). `auto` marks an answer nobody asked
+# for, so the history window can colour it differently — it was never spoken,
+# and the eye needs to find the lines it has not already heard.
 _events: "queue.Queue[tuple]" = queue.Queue()
 
 # `heard [Them]: ...` lines get speaker colouring in the history window; every
@@ -51,7 +54,7 @@ def log(message: str) -> None:
     # Mirrored into the history window by the tk pump. Queued rather than drawn
     # here because log() is called from the capture and answer threads, and
     # tkinter must only be touched from the thread running its main loop.
-    _events.put(("log", message, "", "", False))
+    _events.put(("log", message, "", "", False, False))
 
 
 def split_answer(body: str) -> tuple[str, str]:
@@ -220,7 +223,7 @@ class Trigger:
         def work() -> None:
             path = illustrate.draw(self._client, prompt, on_event=log)
             if path is not None:
-                _events.put(("image", str(path), prompt[:80], "", False))
+                _events.put(("image", str(path), prompt[:80], "", False, False))
 
         log("drawing an illustration in the background...")
         threading.Thread(target=work, daemon=True).start()
@@ -341,7 +344,7 @@ class Trigger:
         title, body, spoken, source = build_answer(state, self._rows)
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         meta = f"{elapsed_ms}ms · {source} · screen {state.age_seconds:.0f}s old"
-        _events.put(("answer", title, body, meta, "sales table" in source))
+        _events.put(("answer", title, body, meta, "sales table" in source, False))
         log(f"button -> {elapsed_ms}ms ({source})")
         log_answer(body)
         self._speak(spoken)
@@ -359,7 +362,7 @@ class Trigger:
             self._audio.record_delivered(body, question)
         spoken, printed = split_answer(body)
         elapsed_ms = int((time.perf_counter() - started) * 1000)
-        _events.put(("answer", title, printed, f"{elapsed_ms}ms · {note}", True))
+        _events.put(("answer", title, printed, f"{elapsed_ms}ms · {note}", True, silent))
         log(f"button -> {elapsed_ms}ms ({label})")
         log_answer(printed)
         # Streamed answers were spoken mid-generation; saying them again would
@@ -376,7 +379,7 @@ class Trigger:
         With the overlay off — the default — the voice is the only channel, so a
         path that emits without speaking is a press that does nothing at all.
         """
-        _events.put(("answer", title, body, meta, accent))
+        _events.put(("answer", title, body, meta, accent, False))
         self._speak(spoken or body)
 
     def _speak(self, text: str) -> None:
@@ -566,10 +569,10 @@ def main() -> None:
     def pump() -> None:
         try:
             while True:
-                kind, title, body, meta, accent = _events.get_nowait()
+                kind, title, body, meta, accent, auto = _events.get_nowait()
                 if kind == "answer":
                     overlay.show(title, body, meta, accent=accent)
-                    history.answer(body, meta)
+                    history.answer(body, meta, auto=auto)
                 elif kind == "image":
                     # title carries the path, body the prompt it was drawn from.
                     history.image(Path(title), body)

@@ -30,6 +30,10 @@ _MUTED = "#7b8394"
 _HEARD_THEM = "#9ecbff"
 _HEARD_YOU = "#a5d6a7"
 _ANSWER = "#ffd479"
+# Auto-answers are a different KIND of thing from the ones you asked for: they
+# were never spoken, and nobody chose to have them. Red so a glance tells you
+# which lines you have already heard and which are just sitting there.
+_AUTO = "#ff6b6b"
 _CODE = "#d7e3f4"
 _CODE_BG = "#161b24"
 
@@ -71,6 +75,7 @@ class History:
         self._text.tag_configure("them", foreground=_HEARD_THEM)
         self._text.tag_configure("you", foreground=_HEARD_YOU)
         self._text.tag_configure("answer", foreground=_ANSWER)
+        self._text.tag_configure("auto", foreground=_AUTO)
         self._text.tag_configure("muted", foreground=_MUTED)
         self._text.tag_configure(
             "code", foreground=_CODE, background=_CODE_BG,
@@ -260,11 +265,18 @@ class History:
     def note(self, text: str) -> None:
         self._append(text, "muted")
 
-    def answer(self, body: str, meta: str = "") -> None:
-        """An answer, with any code block set apart and monospaced."""
+    def answer(self, body: str, meta: str = "", auto: bool = False) -> None:
+        """An answer, with any code block set apart and monospaced.
+
+        `auto` marks one nobody pressed a button for. Coloured differently and
+        given its own marker because it was never spoken — scrolling back, the
+        eye needs to find the lines it has NOT already heard.
+        """
+        tag = "auto" if auto else "answer"
+        marker = "~" if auto else ">"
         prose, code = _split(body)
         if prose:
-            self._append(f"\n> {prose}", "answer")
+            self._append(f"\n{marker} {prose}", tag)
         if code:
             self._append(code, "code")
         if meta:

@@ -390,6 +390,10 @@ detector that fires on a monologue would do it repeatedly. The answer is
 waiting in the F7 window when you look; press F9, F10 or F11 when you actually
 want to hear one.
 
+Auto-answers appear in **red** and are prefixed `~`, where answers you asked
+for are amber and prefixed `>`. Scrolling back, that is the difference between
+a line you have already heard and one that is only sitting there.
+
 Detection is deliberately conservative — a missed question costs a button
 press, a false one is noise. It leans on sentence-final punctuation and
 grammar, not keywords: "explain", "how" and "walk me through" all appear
