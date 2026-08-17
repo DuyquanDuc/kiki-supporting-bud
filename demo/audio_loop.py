@@ -982,9 +982,13 @@ class AudioLoop:
                 # digital silence. Requiring the peak to beat the full silence
                 # floor AS WELL discarded genuinely quiet speech whose structure
                 # was obvious — 21s at ratio 1,265,998 with a peak 0.0002 short.
-                quiet_enough = (loud < config.SPEECH_ABSOLUTE_MIN
+                # Both tests are needed and neither alone is enough. Level
+                # separates the meeting from an idle microphone (same ratio,
+                # 17x quieter); burstiness separates speech from flat noise
+                # (same level, ratio 1.0).
+                quiet_enough = (loud < config.SPEECH_AUDIBLE_PEAK
                                 or ratio < config.SPEECH_BURST_RATIO)
-                why = (f"peak {loud:.5f} vs min {config.SPEECH_ABSOLUTE_MIN}, "
+                why = (f"peak {loud:.5f} vs {config.SPEECH_AUDIBLE_PEAK}, "
                        f"burst ratio {ratio:.1f} vs {config.SPEECH_BURST_RATIO}")
             if quiet_enough:
                 # NOTE: this audio has already been drained, so it is now gone.

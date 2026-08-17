@@ -401,17 +401,26 @@ ECHO_WINDOW_SECONDS = float(os.getenv("ECHO_WINDOW_SECONDS", "60"))
 # ANSWERED. A bare "the" and repeated "Args. Args. Args." in a real session were
 # the same artifact.
 #
-# Measured p95/p20 ratios: real speech 19.6-104.3, noise 1.0 at EVERY level
-# tested (0.002 to 0.03), and 20s of silence containing one 2s utterance 101.1.
-# 4.0 sits in an enormous gap, and rejects loud noise the RMS floor waves
-# through.
-SPEECH_BURST_RATIO = float(os.getenv("SPEECH_BURST_RATIO", "4.0"))
+# Calibrated FIRST on synthetic TTS, where words sit in true silence and ratios
+# run 19.6-104.3, and 4.0 looked generous. Real broadcast audio is dynamically
+# compressed — the gaps between words are filled — and a real session measured
+# 2.4-3.5 on speech loud enough to peak at 0.055. That threshold was throwing
+# away the meeting. Flat noise is 1.0 at every level tested, so 1.6 still
+# separates, and SPEECH_AUDIBLE_PEAK now carries the rest.
+SPEECH_BURST_RATIO = float(os.getenv("SPEECH_BURST_RATIO", "1.6"))
 # The absolute floor below which audio is digital silence rather than quiet
 # speech. Deliberately far under AUDIO_SILENCE_RMS: once burstiness has proved
 # the clip has speech STRUCTURE, loudness barely matters, and a real session
 # threw away 21s whose burst ratio was 1,265,998 — unmistakably a voice —
 # because its peak sat 0.0002 under the old floor.
 SPEECH_ABSOLUTE_MIN = float(os.getenv("SPEECH_ABSOLUTE_MIN", "0.0002"))
+# Peak (95th percentile of 100ms window RMS) below which a clip is too quiet to
+# be the meeting. This does the work that burstiness cannot: measured on a real
+# session, video speech and the idle microphone had the SAME burst ratio, ~3,
+# and were told apart only by level — the video peaked at 0.051 while the mic
+# noise floor sat at 0.0024-0.0039. 0.008 clears that noise by 2x and still
+# admits speech at 8% of normal volume, which measured 0.0135.
+SPEECH_AUDIBLE_PEAK = float(os.getenv("SPEECH_AUDIBLE_PEAK", "0.008"))
 
 
 # WASAPI loopback can keep handing back digital silence while audio plays
@@ -425,7 +434,10 @@ SPEECH_ABSOLUTE_MIN = float(os.getenv("SPEECH_ABSOLUTE_MIN", "0.0002"))
 # UNBROKEN digital silence the recorder is closed and reopened. 25s is longer
 # than any natural pause in a meeting and short enough to lose only one sweep.
 # 0 disables the watchdog.
-LOOPBACK_STALL_SECONDS = float(os.getenv("LOOPBACK_STALL_SECONDS", "25"))
+# Bluetooth loopback in particular stalls repeatedly — a real session reopened
+# four times in four minutes — so this is short enough to recover fast rather
+# than long enough to avoid the odd needless reopen.
+LOOPBACK_STALL_SECONDS = float(os.getenv("LOOPBACK_STALL_SECONDS", "8"))
 
 
 # How often to check whether the default OUTPUT device has changed. WASAPI
